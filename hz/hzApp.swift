@@ -13,5 +13,7 @@ struct hzApp: App {
         WindowGroup {
             ContentView()
         }
+        .windowStyle(DefaultWindowStyle())
+        .defaultSize(width: 400, height: 400)
     }
 }
