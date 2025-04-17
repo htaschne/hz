@@ -7,22 +7,6 @@
 
 import Foundation
 
-func compress(
-    url: URL,
-    updateStatus: @escaping (String) -> Void,
-    updateProgress: @escaping (Double) -> Void
-) {
-    DispatchQueue.global(qos: .userInitiated).async {
-        let _ = extractFrequencies(
-            url,
-            onStatusUpdate: updateStatus,
-            onProgressUpdate: updateProgress
-        )
-
-        updateStatus("Compression done.")
-        updateProgress(1.0)
-    }
-}
 
 func extractFrequencies(
     _ url: URL,
@@ -63,4 +47,93 @@ func extractFrequencies(
     }
 
     return counter
+}
+
+func createPriorityQueue(_ frequencies: [UInt8: Int]) -> PriorityQueue<Node> {
+    var pq: PriorityQueue<Node> = PriorityQueue<Node>()
+
+    for (char, freq) in frequencies {
+        let node = Node(byte: char, count: freq)
+        pq.push(node)
+    }
+    
+    return pq
+}
+
+func createTree(_ pq: inout PriorityQueue<Node>) -> Node? {
+    while pq.count > 1 {
+        guard let lo = pq.pop() else {
+            fatalError()
+        }
+        guard let hi = pq.pop() else {
+            fatalError()
+        }
+        
+        let newNode = Node(byte: 0, count: lo.count + hi.count, lo: lo, hi: hi)
+        pq.push(newNode)
+    }
+    
+    return pq.pop()
+}
+
+func encodeTree(root: inout Node) {
+    if root.lo == nil {
+        return
+    }
+    
+    // Safety: we checked for nil value above and by definition,
+    // of binary heap, if root.lo is not nil root.hi can't either
+    root.lo?.encoding = root.encoding! + "0"
+    root.hi?.encoding = root.encoding! + "1"
+
+    encodeTree(root: &root.lo!)
+    encodeTree(root: &root.hi!)
+}
+
+func traverseTree(root: inout Node, table: inout [UInt8: String]) {
+    if root.lo == nil {
+        table[root.byte] = root.encoding
+        return
+    }
+    
+    traverseTree(root: &root.lo!, table: &table)
+    traverseTree(root: &root.hi!, table: &table)
+}
+
+func createTransTable(_ root: inout Node) -> [UInt8: String] {
+    var table: [UInt8: String] = [:]
+    traverseTree(root: &root, table: &table)
+    return table
+}
+
+
+func compress(
+    url: URL,
+    updateStatus: @escaping (String) -> Void,
+    updateProgress: @escaping (Double) -> Void
+) {
+    DispatchQueue.global(qos: .userInitiated).async {
+        let frequencies = extractFrequencies(
+            url,
+            onStatusUpdate: updateStatus,
+            onProgressUpdate: updateProgress
+        )
+
+        updateStatus("Compression done.")
+        updateProgress(1.0)
+
+        var pq = createPriorityQueue(frequencies)
+        guard var root = createTree(&pq) else {
+            fatalError()
+        }
+        
+        root.encoding = ""
+        encodeTree(root: &root)
+        let translationTable = createTransTable(&root)
+        
+        for (byte, encoding) in translationTable {
+            let character = Character(UnicodeScalar(byte))
+            print("\(character): \(encoding)")
+        }
+    }
 }
