@@ -4,6 +4,8 @@
 //
 //  Created by Agatha Schneider on 17/04/25.
 //
+//  MIT License
+//  See LICENSE file for details.
 
 class Node: Comparable {
     let byte: UInt8
