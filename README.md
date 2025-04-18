@@ -2,7 +2,9 @@
 
 **HuffmanCompressor** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the **Huffman Coding** algorithm.
 
-⚠️ **This app is intended for educational purposes only.** It is currently **slower** and **less efficient** than modern compression utilities like ZIP, and **should not** be used in production environments or for critical file handling.
+## ⚠️ Disclaimer
+This project is provided for educational purposes only. It is not optimized for performance or real-world use. Use at your own risk.
+
 
 ## ✨ Features
 
