@@ -7,7 +7,7 @@
 ## ✨ Features
 
 - 📦 Compress any file using the Huffman algorithm
-- 📂 Decompress previously compressed `.huff` files
+- 📂 Decompress previously compressed `.hz` files
 - 🔍 View compression statistics and tree structure (optional in debug mode)
 - 🎓 Great for studying how lossless entropy-based compression works
 
