@@ -5,13 +5,32 @@
 //  Created by Agatha Schneider on 16/04/25.
 //
 
+import AppKit
 import SwiftUI
 
+func showSavePanel(
+    suggestedFileName: String,
+    completion: @escaping (URL?) -> Void
+) {
+    let panel = NSSavePanel()
+    panel.title = "Save Compressed File"
+    panel.allowedFileTypes = ["hz"]
+    panel.nameFieldStringValue = suggestedFileName
+
+    panel.begin { result in
+        if result == .OK {
+            completion(panel.url)
+        } else {
+            completion(nil)
+        }
+    }
+}
+
 struct ContentView: View {
+    @State private var progress: Double = 0.0
+    @State private var statusText: String = ""
     @State private var droppedText: String = "Drop a file here"
-    @State private var statusMessage: String = ""
-    @State private var isProcessing = false
-    @State private var progress: Double = 0.0  // between 0 and 1
+    @State private var isProcessing: Bool = false
 
     var body: some View {
         ZStack {
@@ -23,9 +42,10 @@ struct ContentView: View {
                     ProgressView(value: progress)
                         .progressViewStyle(LinearProgressViewStyle())
                         .frame(width: 250)
+                        .animation(.easeInOut(duration: 0.25), value: progress)
 
                     HStack {
-                        Text(statusMessage)
+                        Text(statusText)
                         Spacer()
                         Text(String(format: "%.0f%%", progress * 100))
                             .monospacedDigit()
@@ -54,14 +74,14 @@ struct ContentView: View {
                             isProcessing = true
                             droppedText =
                                 "Dropped file: \(url.lastPathComponent)"
-                            statusMessage = "Starting compression..."
+                            statusText = "Compressing..."
                             progress = 0
 
                             compress(
                                 url: url,
                                 updateStatus: { message in
                                     DispatchQueue.main.async {
-                                        statusMessage = message
+                                        statusText = message
                                         if message.contains("complete")
                                             || message.contains("Error")
                                         {
@@ -73,8 +93,32 @@ struct ContentView: View {
                                     DispatchQueue.main.async {
                                         progress = p
                                     }
+                                },
+                                onComplete: { encoded, table in
+                                    showSavePanel(
+                                        suggestedFileName:
+                                            url.deletingPathExtension()
+                                            .lastPathComponent + ".hz"
+                                    ) { selectedURL in
+                                        if let saveURL = selectedURL {
+                                            saveCompressedFile(
+                                                encodedBits: encoded,
+                                                translationTable: table,
+                                                to: saveURL
+                                            )
+                                            DispatchQueue.main.async {
+                                                statusText =
+                                                    "File saved successfully!"
+                                            }
+                                        } else {
+                                            DispatchQueue.main.async {
+                                                statusText = "Save canceled."
+                                            }
+                                        }
+                                    }
                                 }
                             )
+
                         }
                     }
                 }
@@ -82,6 +126,5 @@ struct ContentView: View {
             }
             return false
         }
-
     }
 }
