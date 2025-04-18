@@ -95,29 +95,6 @@ struct ContentView: View {
                                     DispatchQueue.main.async {
                                         progress = p
                                     }
-                                },
-                                onComplete: { encoded, table in
-                                    showSavePanel(
-                                        suggestedFileName:
-                                            url.deletingPathExtension()
-                                            .lastPathComponent + ".hz"
-                                    ) { selectedURL in
-                                        if let saveURL = selectedURL {
-                                            saveCompressedFile(
-                                                encodedBits: encoded,
-                                                translationTable: table,
-                                                to: saveURL
-                                            )
-                                            DispatchQueue.main.async {
-                                                statusText =
-                                                    "File saved successfully!"
-                                            }
-                                        } else {
-                                            DispatchQueue.main.async {
-                                                statusText = "Save canceled."
-                                            }
-                                        }
-                                    }
                                 }
                             )
 

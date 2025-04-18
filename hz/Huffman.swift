@@ -112,7 +112,6 @@ func compress(
     url: URL,
     updateStatus: @escaping (String) -> Void,
     updateProgress: @escaping (Double) -> Void,
-    onComplete: @escaping (_ encoded: String, _ table: [UInt8: String]) -> Void
 ) {
     DispatchQueue.global(qos: .userInitiated).async {
         let frequencies = extractFrequencies(
@@ -162,9 +161,6 @@ func compress(
             updateProgress(1.0)
             
             DispatchQueue.main.async {
-                onComplete(encodedString, translationTable)
-            }
-            DispatchQueue.main.async {
                 updateStatus("Choose a location to save the compressed file...")
 
                 let panel = NSSavePanel()
@@ -194,75 +190,6 @@ func compress(
     
 }
 
-
-func saveCompressedFile(
-    encodedBits: String,
-    translationTable: [UInt8: String],
-    to url: URL
-) {
-    var outputData = Data()
-
-    // 1. Write number of entries in translation table
-    let entryCount = UInt16(translationTable.count)
-    outputData.append(contentsOf: withUnsafeBytes(of: entryCount.littleEndian, Array.init))
-
-    // 2. Write each entry (byte, length of code, packed code bits)
-    for (byte, code) in translationTable {
-        outputData.append(byte)
-
-        let bitCount = UInt8(code.count)
-        outputData.append(bitCount)
-
-        var byteBuffer: UInt8 = 0
-        var bitIndex = 0
-
-        for bitChar in code {
-            if bitChar == "1" {
-                byteBuffer |= (1 << (7 - bitIndex))
-            }
-            bitIndex += 1
-
-            if bitIndex == 8 {
-                outputData.append(byteBuffer)
-                byteBuffer = 0
-                bitIndex = 0
-            }
-        }
-
-        if bitIndex > 0 {
-            outputData.append(byteBuffer)  // Pad the last few bits
-        }
-    }
-
-    // 3. Now encode the full message bits into real bytes
-    var byteBuffer: UInt8 = 0
-    var bitIndex = 0
-
-    for bitChar in encodedBits {
-        if bitChar == "1" {
-            byteBuffer |= (1 << (7 - bitIndex))
-        }
-        bitIndex += 1
-
-        if bitIndex == 8 {
-            outputData.append(byteBuffer)
-            byteBuffer = 0
-            bitIndex = 0
-        }
-    }
-
-    if bitIndex > 0 {
-        outputData.append(byteBuffer)  // Pad remaining bits
-    }
-
-    // 4. Write data to file
-    do {
-        try outputData.write(to: url)
-        print("Compressed file saved at \(url.path)")
-    } catch {
-        print("Failed to save file: \(error)")
-    }
-}
 
 func writeCompressedFile(
     to url: URL,
