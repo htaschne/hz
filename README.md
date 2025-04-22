@@ -33,6 +33,6 @@ Huffman coding is a classic lossless data compression algorithm. While no longer
 Clone the repository and open the Xcode project:
 
 ```bash
-git clone https://github.com/yourusername/HuffmanCompressor.git
-cd HuffmanCompressor
-open HuffmanCompressor.xcodeproj
+git clone https://github.com/htaschne/hz.git
+cd hz
+open hz.xcodeproj
