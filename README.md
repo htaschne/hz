@@ -1,7 +1,6 @@
-# HZ
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/hz/Assets.xcassets/AppIcon.appiconset/512.png" alt="Hz icon"/>
+  
 </p>
 
 **HZ** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the [Huffman Coding algorithm](https://en.wikipedia.org/wiki/Huffman_coding).
