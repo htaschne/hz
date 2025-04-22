@@ -1,6 +1,5 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/hz/Assets.xcassets/AppIcon.appiconset/512.png" alt="Hz icon"/>
-  
 </p>
 
 **HuffmanZip (Hz)** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the [Huffman Coding algorithm](https://en.wikipedia.org/wiki/Huffman_coding).
@@ -36,3 +35,9 @@ Clone the repository and open the Xcode project:
 git clone https://github.com/htaschne/hz.git
 cd hz
 open hz.xcodeproj
+```
+
+### Demo
+<p align="center">
+  <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/media/hz-demo.gif" alt="Gif of Hz app demo"/>
+</p>
