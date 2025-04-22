@@ -178,15 +178,14 @@ func compress(
                             and: encodedString
                         )
                         updateStatus("File saved successfully!")
-                        onFinish()
                     } catch {
                         updateStatus("Failed to save file.")
                         print("Saving error: \(error)")
-                        onFinish()
                     }
                 } else {
                     updateStatus("Save cancelled.")
                 }
+                onFinish()
             }
 
         } catch {
