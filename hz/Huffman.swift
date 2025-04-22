@@ -16,7 +16,7 @@ func extractFrequencies(
     onProgressUpdate: @escaping (Double) -> Void
 ) -> [UInt8: Int] {
 
-    onStatusUpdate("Calculating frequencies...")
+    onStatusUpdate("Compressing the file: \(url.lastPathComponent)...")
     var counter: [UInt8: Int] = [:]
 
     do {
@@ -112,6 +112,7 @@ func compress(
     url: URL,
     updateStatus: @escaping (String) -> Void,
     updateProgress: @escaping (Double) -> Void,
+    onFinish: @escaping () -> Void
 ) {
     DispatchQueue.global(qos: .userInitiated).async {
         let frequencies = extractFrequencies(
@@ -119,47 +120,49 @@ func compress(
             onStatusUpdate: updateStatus,
             onProgressUpdate: updateProgress
         )
-        
+
         updateStatus("Building Huffman tree...")
         var pq = createPriorityQueue(frequencies)
         guard var root = createTree(&pq) else {
             fatalError()
         }
-        
+
         root.encoding = ""
         encodeTree(root: &root)
         let translationTable = createTransTable(&root)
-        
+
         updateStatus("Encoding file...")
         var encodedString = ""
-        
+
         do {
             let fileHandle = try FileHandle(forReadingFrom: url)
             defer { try? fileHandle.close() }
-            
+
             let fileSize =
-            try FileManager.default.attributesOfItem(atPath: url.path)[.size]
-            as? UInt64 ?? 1
+                try FileManager.default.attributesOfItem(atPath: url.path)[
+                    .size
+                ]
+                as? UInt64 ?? 1
             var bytesRead: UInt64 = 0
-            
+
             while true {
                 let data = try fileHandle.read(upToCount: 4096)
                 guard let byteData = data, !byteData.isEmpty else { break }
-                
+
                 for byte in byteData {
                     if let code = translationTable[byte] {
                         encodedString += code
                     }
                 }
-                
+
                 bytesRead += UInt64(byteData.count)
                 let progress = Double(bytesRead) / Double(fileSize)
                 updateProgress(progress)
             }
-            
+
             updateStatus("Encoding complete.")
             updateProgress(1.0)
-            
+
             DispatchQueue.main.async {
                 updateStatus("Choose a location to save the compressed file...")
 
@@ -169,27 +172,30 @@ func compress(
 
                 if panel.runModal() == .OK, let saveURL = panel.url {
                     do {
-                        try writeCompressedFile(to: saveURL, using: translationTable, and: encodedString)
+                        try writeCompressedFile(
+                            to: saveURL,
+                            using: translationTable,
+                            and: encodedString
+                        )
                         updateStatus("File saved successfully!")
+                        onFinish()
                     } catch {
                         updateStatus("Failed to save file.")
                         print("Saving error: \(error)")
+                        onFinish()
                     }
                 } else {
                     updateStatus("Save cancelled.")
                 }
             }
 
-
-            
         } catch {
             updateStatus("Error encoding file.")
             print("Encoding error: \(error)")
         }
     }
-    
-}
 
+}
 
 func writeCompressedFile(
     to url: URL,
@@ -200,7 +206,9 @@ func writeCompressedFile(
 
     // Header: number of entries in the table (UInt16)
     let entryCount = UInt16(table.count)
-    data.append(contentsOf: withUnsafeBytes(of: entryCount.littleEndian, Array.init))
+    data.append(
+        contentsOf: withUnsafeBytes(of: entryCount.littleEndian, Array.init)
+    )
 
     // Header: each entry (byte + code length + code as bytes)
     for (byte, code) in table {
@@ -253,4 +261,140 @@ func writeCompressedFile(
     }
 
     try data.write(to: url)
+}
+
+func decompress(
+    url: URL,
+    updateStatus: @escaping (String) -> Void,
+    updateProgress: @escaping (Double) -> Void,
+    onFinish: @escaping () -> Void
+) {
+    DispatchQueue.global(qos: .userInitiated).async {
+        updateStatus("Decompressing \(url.lastPathComponent)...")
+
+        do {
+            let fileData = try Data(contentsOf: url)
+            var index = 0
+
+            // Read entry count
+            let entryCount =
+                Int(fileData[index]) | (Int(fileData[index + 1]) << 8)
+            index += 2
+
+            var table: [String: UInt8] = [:]
+
+            for _ in 0..<entryCount {
+                let byte = fileData[index]
+                index += 1
+
+                let bitCount = Int(fileData[index])
+                index += 1
+
+                var code = ""
+                var bitsRead = 0
+                while bitsRead < bitCount {
+                    let remaining = bitCount - bitsRead
+                    let bitsToRead = min(8, remaining)
+                    let b = fileData[index]
+                    index += 1
+
+                    for i in 0..<bitsToRead {
+                        let shift = 7 - i
+                        let bit = (b >> shift) & 1
+                        code.append(bit == 1 ? "1" : "0")
+                        bitsRead += 1
+                        if bitsRead == bitCount {
+                            break
+                        }
+                    }
+                }
+
+                table[code] = byte
+            }
+
+            updateStatus("Header parsed. Decoding content...")
+
+            // Decode payload
+            let payload = fileData[index...]
+            let payloadCount = payload.count
+
+            DispatchQueue.main.async {
+                updateStatus("Parsing bitstream...")
+                updateProgress(0.0)
+            }
+
+            var bitString = ""
+            for (byteIndex, byte) in payload.enumerated() {
+                for i in 0..<8 {
+                    let bit = (byte >> (7 - i)) & 1
+                    bitString.append(bit == 1 ? "1" : "0")
+                }
+
+                // Update progress every 100 bytes
+                if byteIndex % 100 == 0 || byteIndex == payloadCount - 1 {
+                    let progress = Double(byteIndex + 1) / Double(payloadCount)
+                    DispatchQueue.main.async {
+                        updateProgress(progress)
+                    }
+                }
+            }
+
+            // Decode payload
+            DispatchQueue.main.async {
+                updateStatus("Decompressing...")
+                updateProgress(0.0)
+            }
+
+            var currentCode = ""
+            var decodedBytes: [UInt8] = []
+
+            var bitsDecoded = 0
+            let totalBits = bitString.count
+
+            for bit in bitString {
+                currentCode.append(bit)
+                if let byte = table[currentCode] {
+                    decodedBytes.append(byte)
+                    currentCode = ""
+                }
+
+                bitsDecoded += 1
+                if bitsDecoded % 1_000 == 0 || bitsDecoded == totalBits {
+                    let progress = Double(bitsDecoded) / Double(totalBits)
+                    DispatchQueue.main.async {
+                        updateProgress(progress)
+                    }
+                }
+            }
+            // Done decoding
+            updateProgress(1.0)
+
+            DispatchQueue.main.async {
+                let panel = NSSavePanel()
+                panel.allowedFileTypes = ["txt"]
+                panel.nameFieldStringValue = "decompressed.txt"
+                updateStatus(
+                    "Choose a location to save the decompressed file..."
+                )
+
+                if panel.runModal() == .OK, let saveURL = panel.url {
+                    do {
+                        try Data(decodedBytes).write(to: saveURL)
+                        updateStatus("File saved successfully.")
+                    } catch {
+                        updateStatus("Error writing decompressed file.")
+                        print("Write error: \(error)")
+                    }
+                } else {
+                    updateStatus("Save cancelled.")
+                }
+                onFinish()
+            }
+
+        } catch {
+            updateStatus("Failed to read compressed file.")
+            onFinish()
+            print("Decompression error: \(error)")
+        }
+    }
 }

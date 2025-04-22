@@ -10,24 +10,6 @@
 import AppKit
 import SwiftUI
 
-func showSavePanel(
-    suggestedFileName: String,
-    completion: @escaping (URL?) -> Void
-) {
-    let panel = NSSavePanel()
-    panel.title = "Save Compressed File"
-    panel.allowedFileTypes = ["hz"]
-    panel.nameFieldStringValue = suggestedFileName
-
-    panel.begin { result in
-        if result == .OK {
-            completion(panel.url)
-        } else {
-            completion(nil)
-        }
-    }
-}
-
 struct ContentView: View {
     @State private var progress: Double = 0.0
     @State private var statusText: String = ""
@@ -69,41 +51,60 @@ struct ContentView: View {
         }
         .frame(minWidth: 400, minHeight: 400)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            if let provider = providers.first {
-                _ = provider.loadObject(ofClass: URL.self) { url, error in
-                    if let url = url {
-                        DispatchQueue.main.async {
-                            isProcessing = true
-                            droppedText =
-                                "Dropped file: \(url.lastPathComponent)"
-                            statusText = "Compressing..."
-                            progress = 0
+            return handleDrop(providers: providers)
+        }
+    }
+}
 
-                            compress(
-                                url: url,
-                                updateStatus: { message in
-                                    DispatchQueue.main.async {
-                                        statusText = message
-                                        if message.contains("complete")
-                                            || message.contains("Error")
-                                        {
-                                            isProcessing = false
-                                        }
-                                    }
-                                },
-                                updateProgress: { p in
-                                    DispatchQueue.main.async {
-                                        progress = p
-                                    }
-                                }
+extension ContentView {
+    func handleDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+                provider.loadItem(
+                    forTypeIdentifier: "public.file-url",
+                    options: nil
+                ) { item, error in
+                    DispatchQueue.main.async {
+                        if let data = item as? Data,
+                            let url = URL(
+                                dataRepresentation: data,
+                                relativeTo: nil
                             )
+                        {
+                            // Update state to show progress bar
+                            self.isProcessing = true
+                            self.progress = 0
+                            self.statusText = "Loading file..."
 
+                            // Common completion handler
+                            let finish: () -> Void = {
+                                DispatchQueue.main.async {
+                                    self.isProcessing = false
+                                }
+                            }
+
+                            if url.pathExtension.lowercased() == "hz" {
+                                decompress(
+                                    url: url,
+                                    updateStatus: { self.statusText = $0 },
+                                    updateProgress: { self.progress = $0 },
+                                    onFinish: finish
+                                )
+                            } else {
+                                compress(
+                                    url: url,
+                                    updateStatus: { self.statusText = $0 },
+                                    updateProgress: { self.progress = $0 },
+                                    onFinish: finish
+                                )
+                            }
                         }
                     }
                 }
                 return true
             }
-            return false
         }
+        return false
     }
+
 }
