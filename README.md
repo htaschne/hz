@@ -38,6 +38,8 @@ open hz.xcodeproj
 ```
 
 ### Demo
+Although it's way slower than state of the art compressors it compresses the bible in under a second and takes 2s to decompress it
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/media/hz-demo.gif" alt="Gif of Hz app demo"/>
 </p>
