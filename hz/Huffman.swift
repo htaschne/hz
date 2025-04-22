@@ -168,7 +168,7 @@ func compress(
 
                 let panel = NSSavePanel()
                 panel.allowedFileTypes = ["hz"]
-                panel.nameFieldStringValue = "compressed.hz"
+                panel.nameFieldStringValue = "\(url.lastPathComponent).hz"
 
                 if panel.runModal() == .OK, let saveURL = panel.url {
                     do {
@@ -269,7 +269,7 @@ func decompress(
     onFinish: @escaping () -> Void
 ) {
     DispatchQueue.global(qos: .userInitiated).async {
-        updateStatus("Decompressing \(url.lastPathComponent)...")
+        updateStatus("Parsing .hz header...")
 
         do {
             let fileData = try Data(contentsOf: url)
@@ -338,7 +338,7 @@ func decompress(
                 }
             }
 
-            // Decode payload
+            // Decode bitString
             DispatchQueue.main.async {
                 updateStatus("Decompressing...")
                 updateProgress(0.0)
@@ -371,7 +371,7 @@ func decompress(
             DispatchQueue.main.async {
                 let panel = NSSavePanel()
                 panel.allowedFileTypes = ["txt"]
-                panel.nameFieldStringValue = "decompressed.txt"
+                panel.nameFieldStringValue = String(url.lastPathComponent.dropLast(3))
                 updateStatus(
                     "Choose a location to save the decompressed file..."
                 )
@@ -382,7 +382,6 @@ func decompress(
                         updateStatus("File saved successfully.")
                     } catch {
                         updateStatus("Error writing decompressed file.")
-                        print("Write error: \(error)")
                     }
                 } else {
                     updateStatus("Save cancelled.")
@@ -393,7 +392,6 @@ func decompress(
         } catch {
             updateStatus("Failed to read compressed file.")
             onFinish()
-            print("Decompression error: \(error)")
         }
     }
 }
