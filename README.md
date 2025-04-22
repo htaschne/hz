@@ -12,7 +12,7 @@ This project is provided for educational purposes only. It is not optimized for 
 
 - [x] 📦 Compress any file using the Huffman algorithm
 - [x] 📂 Decompress previously compressed `.hz` files
-- [ ] 🔍 View compression statistics and tree structure (optional in debug mode)
+
 
 
 ## 🧠 Why Huffman?
@@ -23,8 +23,8 @@ Huffman coding is a classic lossless data compression algorithm. While no longer
 
 ### Requirements
 
-- macOS 12.0 or later
-- Xcode 15 or later
+- macOS 15.4.1 or later
+- Xcode 16.3 or later
 - Swift 6.1
 
 ### Installation
