@@ -3,7 +3,7 @@
   
 </p>
 
-**HZ** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the [Huffman Coding algorithm](https://en.wikipedia.org/wiki/Huffman_coding).
+**HuffmanZip (Hz)** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the [Huffman Coding algorithm](https://en.wikipedia.org/wiki/Huffman_coding).
 
 ## ⚠️ Disclaimer
 This project is provided for educational purposes only. It is not optimized for performance or real-world use. Use at your own risk.
