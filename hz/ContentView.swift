@@ -11,27 +11,24 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @State private var progress: Double = 0.0
-    @State private var statusText: String = ""
-    @State private var droppedText: String = "Drop a file here"
-    @State private var isProcessing: Bool = false
+    @StateObject private var viewModel = FileCompressionViewModel()
 
     var body: some View {
         ZStack {
             Color.white
                 .edgesIgnoringSafeArea(.all)
 
-            if isProcessing {
+            if viewModel.isProcessing {
                 VStack(spacing: 20) {
-                    ProgressView(value: progress)
+                    ProgressView(value: viewModel.progress)
                         .progressViewStyle(LinearProgressViewStyle())
                         .frame(width: 250)
-                        .animation(.easeInOut(duration: 0.25), value: progress)
+                        .animation(.easeInOut(duration: 0.25), value: viewModel.progress)
 
                     HStack {
-                        Text(statusText)
+                        Text(viewModel.statusText)
                         Spacer()
-                        Text(String(format: "%.0f%%", progress * 100))
+                        Text(String(format: "%.0f%%", viewModel.progress * 100))
                             .monospacedDigit()
                     }
                     .frame(width: 250)
@@ -43,7 +40,7 @@ struct ContentView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: 300, maxHeight: 300)
-                    Text(droppedText)
+                    Text(viewModel.droppedText)
                         .padding(.top, 8)
                         .foregroundColor(.black)
                 }
@@ -71,33 +68,7 @@ extension ContentView {
                                 relativeTo: nil
                             )
                         {
-                            // Update state to show progress bar
-                            self.isProcessing = true
-                            self.progress = 0
-                            self.statusText = "Loading file..."
-
-                            // Common completion handler
-                            let finish: () -> Void = {
-                                DispatchQueue.main.async {
-                                    self.isProcessing = false
-                                }
-                            }
-
-                            if url.pathExtension.lowercased() == "hz" {
-                                decompress(
-                                    url: url,
-                                    updateStatus: { self.statusText = $0 },
-                                    updateProgress: { self.progress = $0 },
-                                    onFinish: finish
-                                )
-                            } else {
-                                compress(
-                                    url: url,
-                                    updateStatus: { self.statusText = $0 },
-                                    updateProgress: { self.progress = $0 },
-                                    onFinish: finish
-                                )
-                            }
+                            viewModel.processDroppedFile(url)
                         }
                     }
                 }
