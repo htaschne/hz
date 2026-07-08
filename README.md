@@ -2,34 +2,64 @@
   <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/hz/Assets.xcassets/AppIcon.appiconset/512.png" alt="Hz icon"/>
 </p>
 
-**HuffmanZip (Hz)** is a simple macOS application built with Swift 6.1 that demonstrates how to compress and decompress files using the [Huffman Coding algorithm](https://en.wikipedia.org/wiki/Huffman_coding).
+# Hz
 
-## ⚠️ Disclaimer
-This project is provided for educational purposes only. It is not optimized for performance or real-world use. Use at your own risk.
+A small Huffman compression tool built with Swift and SwiftUI.
 
+Originally created as an educational project, Hz is being rebuilt with a focus on clean architecture, correctness, and native interoperability. The long-term goal is to keep the macOS interface in SwiftUI while moving the compression engine to a low-level implementation exposed through a C ABI.
 
-## ✨ Features
+## Features
 
-- [x] 📦 Compress any file using the Huffman algorithm
-- [x] 📂 Decompress previously compressed `.hz` files
+- Huffman compression and decompression
+- Native macOS drag-and-drop interface
+- Custom `.hz` archive format
+- Modular compression pipeline
+- Designed for future native engine integration
 
+## Architecture
 
+The project is organized into small, focused components.
 
-## 🧠 Why Huffman?
+```text
+Hz/
+├── App/              SwiftUI application
+├── Core/
+│   ├── HuffmanTree
+│   ├── HuffmanCodec
+│   ├── BitReader
+│   ├── BitWriter
+│   ├── FrequencyTable
+│   └── HzArchive
+└── Tests/
+```
 
-Huffman coding is a classic lossless data compression algorithm. While no longer optimal compared to modern codecs, it’s widely used as an educational introduction to entropy encoding.
+The Swift implementation acts as the reference implementation. Future versions will replace the compression engine with a native implementation while preserving the same public interface.
 
-## 🚀 Getting Started
+## The `.hz` Format
 
-### Requirements
+Each archive is composed of three logical sections:
 
-- macOS 15.4.1 or later
-- Xcode 16.3 or later
-- Swift 6.1
+```text
+┌────────────────────┬──────────────────────────┬───────────┐
+│ Header             │ Encoded Huffman Payload  │ Padding   │
+├────────────────────┼──────────────────────────┼───────────┤
+│ 010101...          │ 1011010011010...         │ 000000    │
+└────────────────────┴──────────────────────────┴───────────┘
+```
 
-### Installation
+The header stores the metadata required to reconstruct the Huffman tree and decode the payload safely.
 
-Clone the repository and open the Xcode project:
+It includes:
+
+- magic identifier
+- format version
+- original file size
+- encoded bit count
+- Huffman metadata
+
+The payload contains the packed Huffman bitstream. The optional padding aligns the stream to a full byte and is ignored during decoding using the stored bit count.
+
+## Building
 
 ```bash
 git clone https://github.com/htaschne/hz.git
@@ -37,9 +67,29 @@ cd hz
 open hz.xcodeproj
 ```
 
-### Demo
-Although it's way slower than state of the art compressors it compresses the bible in under a second and takes 2s to decompress it
+## Demo
+
+While Huffman coding is primarily an educational algorithm today, Hz can still compress the Bible in under a second and decompress it in roughly two seconds on modern hardware.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/htaschne/hz/refs/heads/main/media/hz-demo.gif" alt="Gif of Hz app demo"/>
 </p>
+
+## Roadmap
+
+- [x] Reference Huffman implementation in Swift
+- [x] Modular archive format
+- [x] Unit tests
+- [ ] Native compression engine (Rust/C/C++/Zig)
+- [ ] C ABI bridge
+- [ ] Performance benchmarks
+- [ ] Streaming compression
+- [ ] Archive format specification
+
+## Why?
+
+Most compression projects either focus on algorithms or user interfaces. Hz aims to explore both: a modern macOS application backed by a compression engine that can evolve independently from the UI.
+
+## License
+
+MIT
