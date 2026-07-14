@@ -1,0 +1,8 @@
+.build/
+results/raw/*
+results/csv/*
+workloads/generated/*
+!results/raw/.gitkeep
+!results/csv/.gitkeep
+!workloads/generated/.gitkeep
+
