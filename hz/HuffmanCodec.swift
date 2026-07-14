@@ -18,6 +18,8 @@ struct HuffmanCodec {
 
         guard let tree = HuffmanTree.build(frequencies: frequencies) else {
             return HzArchive(
+                flags: HzArchive.supportedFlags,
+                recursiveLayerCount: 0,
                 originalByteCount: 0,
                 encodedBitCount: 0,
                 frequencies: [:],
@@ -37,6 +39,8 @@ struct HuffmanCodec {
         }
 
         return HzArchive(
+            flags: HzArchive.supportedFlags,
+            recursiveLayerCount: 0,
             originalByteCount: UInt64(input.count),
             encodedBitCount: writer.bitCount,
             frequencies: frequencies,
@@ -60,4 +64,3 @@ struct HuffmanCodec {
         )
     }
 }
-

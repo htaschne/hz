@@ -7,13 +7,18 @@
 
 import Foundation
 
-/// Version 1 `.hz` archive format.
+/// Version 2 `.hz` archive format.
 ///
 /// Multi-byte integers are little-endian.
 ///
 /// Header:
 /// - 4 bytes: magic bytes, ASCII "HZF1"
-/// - 1 byte: format version, currently 1
+/// - 1 byte: format version, currently 2
+/// - 1 byte: flags, currently 0
+/// - 2 bytes: recursive layer count
+///   - 0 means this archive does not advertise total recursion depth
+///   - the outermost archive writes the total accepted Huffman layer count
+///   - inner recursive layers write 0 so they remain independently decodable
 /// - 8 bytes: original uncompressed byte count
 /// - 8 bytes: encoded payload bit count
 /// - 2 bytes: frequency table entry count
@@ -29,6 +34,8 @@ struct HzArchive {
         case unsupportedLegacyArchive
         case truncatedHeader
         case invalidVersion(UInt8)
+        case unsupportedFlags(UInt8)
+        case invalidRecursiveLayerCount
         case invalidFrequencyTable
         case duplicateFrequency(UInt8)
         case frequencyTotalMismatch(expected: UInt64, actual: UInt64)
@@ -38,8 +45,11 @@ struct HzArchive {
     }
 
     static let magic = Array("HZF1".utf8)
-    static let currentVersion: UInt8 = 1
+    static let currentVersion: UInt8 = 2
+    static let supportedFlags: UInt8 = 0
 
+    let flags: UInt8
+    let recursiveLayerCount: UInt16
     let originalByteCount: UInt64
     let encodedBitCount: UInt64
     let frequencies: [UInt8: UInt64]
@@ -53,6 +63,8 @@ struct HzArchive {
         var data = Data()
         data.append(contentsOf: Self.magic)
         data.append(Self.currentVersion)
+        data.append(flags)
+        data.appendLittleEndian(recursiveLayerCount)
         data.appendLittleEndian(originalByteCount)
         data.appendLittleEndian(encodedBitCount)
         data.appendLittleEndian(UInt16(frequencies.count))
@@ -82,15 +94,29 @@ struct HzArchive {
         }
 
         guard version == Self.currentVersion else {
+            if version == 1 {
+                throw Error.unsupportedLegacyArchive
+            }
+
             throw Error.invalidVersion(version)
         }
 
         guard
+            let flags = reader.readUInt8(),
+            let recursiveLayerCount = reader.readUInt16(),
             let originalByteCount = reader.readUInt64(),
             let encodedBitCount = reader.readUInt64(),
             let entryCount = reader.readUInt16()
         else {
             throw Error.truncatedHeader
+        }
+
+        guard flags == Self.supportedFlags else {
+            throw Error.unsupportedFlags(flags)
+        }
+
+        guard recursiveLayerCount != 0 || originalByteCount > 0 || encodedBitCount == 0 else {
+            throw Error.invalidRecursiveLayerCount
         }
 
         var frequencies: [UInt8: UInt64] = [:]
@@ -147,6 +173,19 @@ struct HzArchive {
 
         let payload = data.subdata(in: reader.offset..<data.endIndex)
         return HzArchive(
+            flags: flags,
+            recursiveLayerCount: recursiveLayerCount,
+            originalByteCount: originalByteCount,
+            encodedBitCount: encodedBitCount,
+            frequencies: frequencies,
+            payload: payload
+        )
+    }
+
+    func withRecursiveLayerCount(_ layerCount: UInt16) -> HzArchive {
+        HzArchive(
+            flags: flags,
+            recursiveLayerCount: layerCount,
             originalByteCount: originalByteCount,
             encodedBitCount: encodedBitCount,
             frequencies: frequencies,
