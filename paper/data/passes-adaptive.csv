@@ -1,0 +1,14 @@
+workload,mode,configured_max_depth,pass,input_bytes,output_bytes,ratio,accepted,best_pass,accepted_layer_count,stopping_reason,compression_seconds,decompression_seconds,verified
+compressed-like,adaptive,adaptive,1,16384,18574,1.133666992,true,1,1,notSmaller,0.006979942,0.002316952,true
+compressed-like,adaptive,adaptive,2,18574,20159,1.085334338,false,1,1,notSmaller,0.006979942,0.002316952,true
+high-entropy,adaptive,adaptive,1,16384,18714,1.142211914,true,1,1,notSmaller,0.005313993,0.001806974,true
+high-entropy,adaptive,adaptive,2,18714,20318,1.085711232,false,1,1,notSmaller,0.005313993,0.001806974,true
+ordinary-prose,adaptive,adaptive,1,22960,12786,0.556881533,true,1,1,notSmaller,0.003672957,0.001705050,true
+ordinary-prose,adaptive,adaptive,2,12786,14773,1.155404349,false,1,1,notSmaller,0.003672957,0.001705050,true
+repetitive-text,adaptive,adaptive,1,13312,4432,0.332932692,true,2,2,notSmaller,0.001163960,0.001070976,true
+repetitive-text,adaptive,adaptive,2,4432,2325,0.524593863,true,2,2,notSmaller,0.001163960,0.001070976,true
+repetitive-text,adaptive,adaptive,3,2325,2732,1.175053763,false,2,2,notSmaller,0.001163960,0.001070976,true
+single-byte,adaptive,adaptive,1,16384,2083,0.127136230,true,3,3,notSmaller,0.000759006,0.000182986,true
+single-byte,adaptive,adaptive,2,2083,371,0.178108497,true,3,3,notSmaller,0.000759006,0.000182986,true
+single-byte,adaptive,adaptive,3,371,293,0.789757412,true,3,3,notSmaller,0.000759006,0.000182986,true
+single-byte,adaptive,adaptive,4,293,607,2.071672355,false,3,3,notSmaller,0.000759006,0.000182986,true

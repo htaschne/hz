@@ -1,0 +1,6 @@
+workload,mode,configured_max_depth,original_bytes,final_archive_bytes,best_pass,best_archive_bytes,accepted_layer_count,stopping_reason,compression_seconds,decompression_seconds,verified,platform
+compressed-like,adaptive,adaptive,16384,18574,1,18574,1,notSmaller,0.006979942,0.002316952,true,Version 26.5.1 (Build 25F80); processors=10
+high-entropy,adaptive,adaptive,16384,18714,1,18714,1,notSmaller,0.005313993,0.001806974,true,Version 26.5.1 (Build 25F80); processors=10
+ordinary-prose,adaptive,adaptive,22960,12786,1,12786,1,notSmaller,0.003672957,0.001705050,true,Version 26.5.1 (Build 25F80); processors=10
+repetitive-text,adaptive,adaptive,13312,2325,2,2325,2,notSmaller,0.001163960,0.001070976,true,Version 26.5.1 (Build 25F80); processors=10
+single-byte,adaptive,adaptive,16384,293,3,293,3,notSmaller,0.000759006,0.000182986,true,Version 26.5.1 (Build 25F80); processors=10

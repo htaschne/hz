@@ -1,0 +1,17 @@
+\begin{table}[t]
+\caption{Adaptive recursive Huffman results. ``Baseline'' is one Huffman archive layer.}
+\label{tab:results}
+\centering
+\scriptsize
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lrrrrrr@{}}
+\toprule
+Workload & In & 1-pass & Adapt. & L & Ratio & $\Delta$ \\
+\midrule
+Compressed-like & 16,384 & 18,574 & 18,574 & 1 & 1.134 & +13.4\% \\
+High entropy & 16,384 & 18,714 & 18,714 & 1 & 1.142 & +14.2\% \\
+Ordinary prose & 22,960 & 12,786 & 12,786 & 1 & 0.557 & -44.3\% \\
+Repetitive text & 13,312 & 4,432 & 2,325 & 2 & 0.175 & -82.5\% \\
+Single byte & 16,384 & 2,083 & 293 & 3 & 0.018 & -98.2\% \\
+\bottomrule
+\end{tabular*}
+\end{table}

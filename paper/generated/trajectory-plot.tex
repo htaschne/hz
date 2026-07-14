@@ -1,0 +1,24 @@
+\begin{tikzpicture}
+\begin{axis}[
+    width=\columnwidth,
+    height=5.4cm,
+    xlabel={Pass},
+    ylabel={Output bytes},
+    ymode=log,
+    grid=both,
+    legend style={font=\scriptsize, at={(0.5,-0.27)}, anchor=north, legend columns=2},
+    tick label style={font=\scriptsize},
+    label style={font=\scriptsize}
+]
+\addplot+[mark=*] coordinates {(1,18574) (2,20159)};
+\addlegendentry{Compressed-like}
+\addplot+[mark=*] coordinates {(1,18714) (2,20318)};
+\addlegendentry{High entropy}
+\addplot+[mark=*] coordinates {(1,12786) (2,14773)};
+\addlegendentry{Ordinary prose}
+\addplot+[mark=*] coordinates {(1,4432) (2,2325) (3,2732)};
+\addlegendentry{Repetitive text}
+\addplot+[mark=*] coordinates {(1,2083) (2,371) (3,293) (4,607)};
+\addlegendentry{Single byte}
+\end{axis}
+\end{tikzpicture}

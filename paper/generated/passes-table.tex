@@ -1,0 +1,25 @@
+\begin{table}[t]
+\caption{Compression trajectory for adaptive mode. Rejected rows are attempted layers that were discarded by the stopping rule.}
+\label{tab:passes}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Workload & Pass & Input & Output & Ratio & Accepted \\
+\midrule
+Compressed-like & 1 & 16,384 & 18,574 & 1.134 & yes \\
+Compressed-like & 2 & 18,574 & 20,159 & 1.085 & no \\
+High entropy & 1 & 16,384 & 18,714 & 1.142 & yes \\
+High entropy & 2 & 18,714 & 20,318 & 1.086 & no \\
+Ordinary prose & 1 & 22,960 & 12,786 & 0.557 & yes \\
+Ordinary prose & 2 & 12,786 & 14,773 & 1.155 & no \\
+Repetitive text & 1 & 13,312 & 4,432 & 0.333 & yes \\
+Repetitive text & 2 & 4,432 & 2,325 & 0.525 & yes \\
+Repetitive text & 3 & 2,325 & 2,732 & 1.175 & no \\
+Single byte & 1 & 16,384 & 2,083 & 0.127 & yes \\
+Single byte & 2 & 2,083 & 371 & 0.178 & yes \\
+Single byte & 3 & 371 & 293 & 0.790 & yes \\
+Single byte & 4 & 293 & 607 & 2.072 & no \\
+\bottomrule
+\end{tabular}
+\end{table}
