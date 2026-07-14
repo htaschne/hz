@@ -21,11 +21,11 @@ struct FileCompressionService {
         onProgress("Reading file...", 0.1)
         let input = try Data(contentsOf: url)
 
-        onProgress("Compressing file...", 0.35)
-        let archive = try engine.compress(input)
+        onProgress("Compressing recursively...", 0.35)
+        let result = try engine.compress(input, options: .adaptive)
 
-        onProgress("Compression complete.", 1.0)
-        return archive
+        onProgress("Compression complete after \(result.acceptedLayerCount) layer(s).", 1.0)
+        return result.archive
     }
 
     func decompressFile(
@@ -36,10 +36,9 @@ struct FileCompressionService {
         let archive = try Data(contentsOf: url)
 
         onProgress("Decompressing file...", 0.35)
-        let output = try engine.decompress(archive)
+        let output = try engine.decompress(archive, options: .full)
 
         onProgress("Decompression complete.", 1.0)
         return output
     }
 }
-
