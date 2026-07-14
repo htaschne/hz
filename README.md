@@ -11,6 +11,7 @@ Originally created as an educational project, Hz is being rebuilt with a focus o
 ## Features
 
 - Huffman compression and decompression
+- Adaptive recursive Huffman compression
 - Native macOS drag-and-drop interface
 - Custom `.hz` archive format
 - Modular compression pipeline
@@ -59,6 +60,70 @@ It includes:
 
 The payload contains the packed Huffman bitstream. The optional padding aligns the stream to a full byte and is ignored during decoding using the stored bit count.
 
+Current archives use format version 2. The header also stores flags and an outer-only recursive layer count. Inner recursive layers write a layer count of `0`; only the outermost archive records how many Huffman layers must be removed to recover the original bytes.
+
+## Recursive Compression
+
+Hz can recursively compress the output of a previous Huffman pass:
+
+```text
+original
+   ↓
+layer 1 `.hz`
+   ↓
+layer 2 `.hz`
+   ↓
+layer 3 `.hz`
+```
+
+Normal application compression uses adaptive mode:
+
+- always perform the first Huffman pass
+- continue while the next archive is strictly smaller
+- stop before a non-improving layer
+- discard the non-improving candidate
+- record the accepted layer count in the outermost archive
+
+Depth uses benchmark-oriented semantics:
+
+- `maxDepth = 0` means traditional single-pass compression
+- `maxDepth = 1` allows at most two total Huffman layers
+- `maxDepth = 2` allows at most three total Huffman layers
+
+Full decompression unwraps all layers recorded by the outermost archive. Partial decompression can remove only the requested number of outer layers and return a remaining valid `.hz` archive.
+
+Recursive Huffman compression is an experiment and benchmark feature, not a claim that repeated Huffman coding generally improves compression. High-entropy and already-compressed-like inputs usually grow.
+
+## Benchmarks
+
+The benchmark runner lives in `benchmarks/` and compiles the production Swift reference engine with `swiftc -O`.
+
+Baseline single-pass run:
+
+```bash
+benchmarks/run.sh --max-depth 0
+```
+
+Adaptive recursive run:
+
+```bash
+benchmarks/run.sh --adaptive
+```
+
+Forced recursive run:
+
+```bash
+benchmarks/run.sh --max-depth 3
+```
+
+Analyze generated CSV files:
+
+```bash
+benchmarks/analyze.py
+```
+
+Results are written under `benchmarks/results/`. Generated raw archives and CSV files are ignored by git.
+
 ## Building
 
 ```bash
@@ -80,9 +145,9 @@ While Huffman coding is primarily an educational algorithm today, Hz can still c
 - [x] Reference Huffman implementation in Swift
 - [x] Modular archive format
 - [x] Unit tests
+- [x] Recursive benchmark harness
 - [ ] Native compression engine (Rust/C/C++/Zig)
 - [ ] C ABI bridge
-- [ ] Performance benchmarks
 - [ ] Streaming compression
 - [ ] Archive format specification
 
