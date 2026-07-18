@@ -5,6 +5,12 @@ struct BenchmarkOptions {
     var workloadsPath = "benchmarks/workloads/generated"
     var outputPath = "benchmarks/results"
     var maxAdditionalDepth: Int?
+    var engineKind = BenchmarkEngineKind.swift
+}
+
+enum BenchmarkEngineKind: String {
+    case swift
+    case rust
 }
 
 struct Workload {
@@ -17,6 +23,7 @@ enum BenchmarkError: Error, CustomStringConvertible {
     case invalidArgument(String)
     case noWorkloads
     case verificationFailed(String)
+    case rustEngineUnavailable
 
     var description: String {
         switch self {
@@ -28,6 +35,8 @@ enum BenchmarkError: Error, CustomStringConvertible {
             return "No workloads found"
         case .verificationFailed(let workload):
             return "Verification failed for \(workload)"
+        case .rustEngineUnavailable:
+            return "Rust benchmark engine was selected, but the runner was not built with HZ_NATIVE_BRIDGE"
         }
     }
 }
@@ -36,6 +45,11 @@ let startDate = Date()
 
 do {
     let options = try parseArguments(Array(CommandLine.arguments.dropFirst()))
+
+    if options.engineKind == .rust {
+        try runRustBridgeProbe()
+    }
+
     let fileManager = FileManager.default
     let outputURL = URL(fileURLWithPath: options.outputPath)
     let rawURL = outputURL.appendingPathComponent("raw", isDirectory: true)
@@ -153,6 +167,12 @@ func parseArguments(_ arguments: [String]) throws -> BenchmarkOptions {
             options.workloadsPath = try value(after: argument, in: arguments, at: &index)
         case "--output":
             options.outputPath = try value(after: argument, in: arguments, at: &index)
+        case "--engine":
+            let rawValue = try value(after: argument, in: arguments, at: &index)
+            guard let engineKind = BenchmarkEngineKind(rawValue: rawValue) else {
+                throw BenchmarkError.invalidArgument(argument)
+            }
+            options.engineKind = engineKind
         case "--max-depth":
             let rawValue = try value(after: argument, in: arguments, at: &index)
             guard let depth = Int(rawValue), depth >= 0 else {
@@ -172,6 +192,30 @@ func parseArguments(_ arguments: [String]) throws -> BenchmarkOptions {
     }
 
     return options
+}
+
+func runRustBridgeProbe() throws -> Never {
+    #if HZ_NATIVE_BRIDGE
+    let info = RustHuffmanEngine.info
+    print("Rust bridge available: \(info.isBridgeAvailable)")
+    print("Rust native ABI version: \(info.abiVersion)")
+    print("Rust native version: \(info.version)")
+    print("Rust Huffman compression supported: \(info.supportsCompression)")
+
+    do {
+        _ = try RustHuffmanEngine().compress(Data(), options: .singlePass)
+        fputs("benchmark error: Rust Huffman engine unexpectedly produced output\n", stderr)
+        exit(3)
+    } catch NativeEngineError.notImplemented(let message) {
+        fputs("benchmark error: Rust Huffman engine not implemented: \(message)\n", stderr)
+        exit(2)
+    } catch {
+        fputs("benchmark error: Rust bridge failed: \(error)\n", stderr)
+        exit(1)
+    }
+    #else
+    throw BenchmarkError.rustEngineUnavailable
+    #endif
 }
 
 func value(after argument: String, in arguments: [String], at index: inout Int) throws -> String {
@@ -289,11 +333,14 @@ func printUsage() {
         """
         Usage:
           benchmarks/run.sh [--adaptive]
+          benchmarks/run.sh --engine swift [--adaptive]
+          benchmarks/run.sh --engine rust
           benchmarks/run.sh --max-depth 0
           benchmarks/run.sh --max-depth N
           benchmarks/run.sh --input path/to/file [--max-depth N]
 
         Options:
+          --engine NAME      Engine to use: swift or rust. Defaults to swift.
           --input PATH       Benchmark one file.
           --workloads PATH   Benchmark all files in a workload directory.
           --output PATH      Results directory. Defaults to benchmarks/results.
@@ -302,4 +349,3 @@ func printUsage() {
         """
     )
 }
-
