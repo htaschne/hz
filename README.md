@@ -15,7 +15,7 @@ Originally created as an educational project, Hz is being rebuilt with a focus o
 - Native macOS drag-and-drop interface
 - Custom `.hz` archive format
 - Modular compression pipeline
-- Designed for future native engine integration
+- Rust native-engine bridge through a C ABI
 
 ## Architecture
 
@@ -34,7 +34,23 @@ Hz/
 └── Tests/
 ```
 
-The Swift implementation acts as the reference implementation. Future versions will replace the compression engine with a native implementation while preserving the same public interface.
+The Swift implementation acts as the working reference implementation. The repository also contains a Rust static library linked through a small C ABI. That Rust bridge is callable from Swift, but Rust Huffman compression and decompression are intentionally not implemented yet.
+
+```text
+SwiftUI
+   ↓
+FileCompressionService
+   ↓
+CompressionEngine
+   ├── SwiftHuffmanEngine
+   └── RustHuffmanEngine
+            ↓
+          C ABI
+            ↓
+       hz-native Rust crate
+            ↓
+      Huffman pipeline TODO
+```
 
 ## The `.hz` Format
 
@@ -104,6 +120,12 @@ Baseline single-pass run:
 benchmarks/run.sh --max-depth 0
 ```
 
+Explicit Swift engine run:
+
+```bash
+benchmarks/run.sh --engine swift --max-depth 0
+```
+
 Adaptive recursive run:
 
 ```bash
@@ -115,6 +137,14 @@ Forced recursive run:
 ```bash
 benchmarks/run.sh --max-depth 3
 ```
+
+Native Rust bridge probe:
+
+```bash
+benchmarks/run.sh --engine rust
+```
+
+The Rust benchmark mode builds and calls the native bridge, reports that the bridge is available, then exits with a nonzero status because Rust Huffman compression is not implemented. It does not write benchmark CSV rows for the unimplemented engine.
 
 Analyze generated CSV files:
 
@@ -132,6 +162,22 @@ cd hz
 open hz.xcodeproj
 ```
 
+Native build commands:
+
+```bash
+make native
+make native-release
+make native-test
+make native-header
+make native-clean
+```
+
+The Xcode app target builds `native/hz-native` before Swift links. The checked-in C header is `native/hz-native/include/hz_native.h`, and Swift imports it through `native/module.modulemap`. The current native target is Apple Silicon macOS: `aarch64-apple-darwin`.
+
+Native ownership rules are intentionally simple: Swift owns input `Data`, Rust never retains input pointers, Rust owns returned buffers, and Swift releases those buffers by calling `hz_native_result_free` through `RustHuffmanEngine`.
+
+See `docs/NATIVE_ENGINE.md` for ABI rules and the future Rust implementation roadmap.
+
 ## Demo
 
 While Huffman coding is primarily an educational algorithm today, Hz can still compress the Bible in under a second and decompress it in roughly two seconds on modern hardware.
@@ -146,8 +192,9 @@ While Huffman coding is primarily an educational algorithm today, Hz can still c
 - [x] Modular archive format
 - [x] Unit tests
 - [x] Recursive benchmark harness
-- [ ] Native compression engine (Rust/C/C++/Zig)
-- [ ] C ABI bridge
+- [x] C ABI bridge
+- [x] Rust native-engine scaffold
+- [ ] Rust Huffman implementation
 - [ ] Streaming compression
 - [ ] Archive format specification
 
