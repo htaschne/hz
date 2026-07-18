@@ -1,0 +1,4 @@
+module HzNative {
+    header "hz-native/include/hz_native.h"
+    export *
+}

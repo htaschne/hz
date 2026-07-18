@@ -1,2 +1,4 @@
 100MB.txt
 release
+.DS_Store
+native/hz-native/target/
