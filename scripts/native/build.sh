@@ -14,14 +14,14 @@ fi
 
 case "$CONFIGURATION" in
   Release|release)
-    PROFILE_FLAG=(--release)
+    cargo build \
+      --manifest-path "$CRATE_DIR/Cargo.toml" \
+      --target "$TARGET" \
+      --release
     ;;
   *)
-    PROFILE_FLAG=()
+    cargo build \
+      --manifest-path "$CRATE_DIR/Cargo.toml" \
+      --target "$TARGET"
     ;;
 esac
-
-cargo build \
-  --manifest-path "$CRATE_DIR/Cargo.toml" \
-  --target "$TARGET" \
-  "${PROFILE_FLAG[@]}"

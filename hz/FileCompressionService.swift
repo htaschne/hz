@@ -10,7 +10,7 @@ import Foundation
 struct FileCompressionService {
     let engine: CompressionEngine
 
-    init(engine: CompressionEngine = SwiftHuffmanEngine()) {
+    init(engine: CompressionEngine = CompressionEngineFactory.make()) {
         self.engine = engine
     }
 
