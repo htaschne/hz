@@ -250,7 +250,16 @@ final class FileCompressionViewModel: ObservableObject {
             return OperationFailure(
                 title: "Archive Could Not Be Decoded",
                 message: "The selected .hz file is corrupt, incomplete, or not a supported Hz archive.",
-                technicalDetails: String(describing: error),
+                technicalDetails: technicalDetails(for: error),
+                sourceURL: sourceURL
+            )
+        }
+
+        if let serviceError = error as? FileCompressionServiceError {
+            return OperationFailure(
+                title: "Output File Could Not Be Created",
+                message: "Choose another destination or verify that the folder is writable.",
+                technicalDetails: technicalDetails(for: serviceError),
                 sourceURL: sourceURL
             )
         }
@@ -259,7 +268,7 @@ final class FileCompressionViewModel: ObservableObject {
             return OperationFailure(
                 title: nativeErrorTitle(nativeError, operation: operation),
                 message: nativeErrorMessage(nativeError),
-                technicalDetails: String(describing: nativeError),
+                technicalDetails: technicalDetails(for: nativeError),
                 sourceURL: sourceURL
             )
         }
@@ -277,7 +286,7 @@ final class FileCompressionViewModel: ObservableObject {
         return OperationFailure(
             title: "\(operation.title) Failed",
             message: "Hz could not finish this operation.",
-            technicalDetails: String(describing: error),
+            technicalDetails: technicalDetails(for: error),
             sourceURL: sourceURL
         )
     }
@@ -314,10 +323,124 @@ final class FileCompressionViewModel: ObservableObject {
             return "The native Rust backend is not available in this build."
         case let .notImplemented(message),
             let .invalidArgument(message),
-            let .allocationFailed(message),
-            let .internalError(message),
             let .unknownStatus(_, message):
+            return message.isEmpty ? "The native backend returned an error." : message
+        case .allocationFailed:
+            return "The native backend could not allocate enough memory."
+        case let .internalError(message):
+            if message.contains("destination") || message.contains("output") || message.contains("file") {
+                return "Choose another destination or verify that the folder is writable."
+            }
+
             return message.isEmpty ? "The native backend returned an error." : message
         }
     }
+
+    private static func technicalDetails(for error: Error) -> String {
+        #if DEBUG
+        return debugTechnicalDetails(for: error)
+        #else
+        return releaseTechnicalDetails(for: error)
+        #endif
+    }
+
+    private static func releaseTechnicalDetails(for error: Error) -> String {
+        if error is FileCompressionServiceError {
+            return "Output file creation or replacement failed."
+        }
+
+        if let nativeError = error as? NativeEngineError {
+            switch nativeError {
+            case .unavailable:
+                return "Native backend unavailable."
+            case .notImplemented:
+                return "Native backend operation is not implemented."
+            case .invalidArgument:
+                return "Native backend rejected the input."
+            case .allocationFailed:
+                return "Native backend allocation failed."
+            case .internalError:
+                return "Native backend file operation failed."
+            case let .unknownStatus(status, _):
+                return "Native backend returned status \(status)."
+            }
+        }
+
+        return String(describing: error)
+    }
+
+    #if DEBUG
+    private static func debugTechnicalDetails(for error: Error) -> String {
+        if let serviceError = error as? FileCompressionServiceError {
+            return debugServiceDetails(for: serviceError)
+        }
+
+        let nsError = error as NSError
+        return """
+        Error: \(String(describing: error))
+        Domain: \(nsError.domain)
+        Code: \(nsError.code)
+        Description: \(nsError.localizedDescription)
+        """
+    }
+
+    private static func debugServiceDetails(for error: FileCompressionServiceError) -> String {
+        switch error {
+        case let .temporaryDirectoryCreationFailed(url, diagnostics, underlying):
+            return """
+            Category: temporary directory creation failed
+            Operation: createDirectory
+            URL: \(url.path)
+            \(debugDiagnostics(diagnostics))
+            \(debugUnderlyingError(underlying))
+            """
+        case let .temporaryOutputCleanupFailed(url, diagnostics, underlying):
+            return """
+            Category: temporary output cleanup failed
+            Operation: removeItem
+            URL: \(url.path)
+            \(debugDiagnostics(diagnostics))
+            \(debugUnderlyingError(underlying))
+            """
+        case let .outputReplacementFailed(
+            temporaryURL,
+            destinationURL,
+            destinationDiagnostics,
+            temporaryDiagnostics,
+            underlying
+        ):
+            return """
+            Category: output replacement failed
+            Operation: replaceItemAt or moveItem
+            Temporary URL: \(temporaryURL.path)
+            Destination URL: \(destinationURL.path)
+            Destination diagnostics:
+            \(debugDiagnostics(destinationDiagnostics))
+            Temporary diagnostics:
+            \(debugDiagnostics(temporaryDiagnostics))
+            \(debugUnderlyingError(underlying))
+            """
+        }
+    }
+
+    private static func debugDiagnostics(_ diagnostics: FileDiagnostics) -> String {
+        """
+        URL: \(diagnostics.url.path)
+        Parent: \(diagnostics.parentURL.path)
+        Parent exists: \(diagnostics.parentExists)
+        Parent writable: \(diagnostics.parentIsWritable)
+        File exists: \(diagnostics.fileExists)
+        """
+    }
+
+    private static func debugUnderlyingError(_ error: Error) -> String {
+        let nsError = error as NSError
+        return """
+        Underlying error: \(String(describing: error))
+        Domain: \(nsError.domain)
+        Code: \(nsError.code)
+        Description: \(nsError.localizedDescription)
+        """
+    }
+    #endif
 }

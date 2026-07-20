@@ -134,6 +134,48 @@ struct NativeEngineTests {
         #expect(try Data(contentsOf: outputURL) == input)
     }
 
+    @Test func fileCompressionServiceRustStreamingReplacesExistingDestination() throws {
+        let directory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let sourceURL = directory.appendingPathComponent("input with spaces.txt")
+        let archiveURL = directory.appendingPathComponent("existing archive.hz")
+        let outputURL = directory.appendingPathComponent("restored output.txt")
+        let input = Data("replacement through Swift staging".utf8)
+        try input.write(to: sourceURL)
+        try Data("stale destination".utf8).write(to: archiveURL)
+
+        let service = FileCompressionService(engine: RustHuffmanEngine())
+        try service.compressFile(at: sourceURL, to: archiveURL) { _, _ in }
+
+        #expect(try Data(contentsOf: archiveURL) != Data("stale destination".utf8))
+
+        try service.decompressFile(at: archiveURL, to: outputURL) { _, _ in }
+
+        #expect(try Data(contentsOf: outputURL) == input)
+    }
+
+    @Test func fileCompressionServiceRustStreamingHandlesUnicodeDestination() throws {
+        let directory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let sourceURL = directory.appendingPathComponent("unicode-source")
+        let archiveURL = directory.appendingPathComponent("cafe-\u{00E9}-archive.hz")
+        let outputURL = directory.appendingPathComponent("restored-\u{2603}")
+        let input = Data([0, 1, 2, 3, 0, 255])
+        try input.write(to: sourceURL)
+
+        let service = FileCompressionService(engine: RustHuffmanEngine())
+        try service.compressFile(at: sourceURL, to: archiveURL) { _, _ in }
+        try service.decompressFile(at: archiveURL, to: outputURL) { _, _ in }
+
+        #expect(try Data(contentsOf: outputURL) == input)
+    }
+
     @Test func swiftEngineRemainsDefault() {
         #expect(CompressionEngineFactory.defaultKind == .swift)
         #expect(CompressionEngineFactory.make() is SwiftHuffmanEngine)
