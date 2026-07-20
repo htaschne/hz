@@ -141,11 +141,53 @@ Padding bits are never decoded as output. Invalid magic, unsupported versions or
 
 The Swift reference engine remains the production default through `CompressionEngineFactory.defaultKind == .swift`. Selecting `.rust` uses the native single-layer codec through `RustHuffmanEngine`.
 
+## Streaming APIs
+
+The Rust crate exposes bounded-memory streaming primitives:
+
+```rust
+compress_stream<R, W>(input: &mut R, output: &mut W)
+where
+    R: Read + Seek,
+    W: Write
+
+decompress_stream<R, W>(input: &mut R, output: &mut W)
+where
+    R: Read,
+    W: Write
+```
+
+Compression requires a seekable input because ordinary Huffman coding needs the complete frequency table before payload encoding. The compressor preserves the caller’s starting stream position, reads to EOF in bounded chunks, seeks back to the starting position, writes the complete header, then streams the encoded payload. Output does not need to be seekable.
+
+The default stream buffer is 64 KiB. The bit writer retains at most one partial payload byte in addition to caller-provided writer buffering.
+
+Streaming decompression parses the header incrementally, reconstructs the tree, reads payload bits incrementally, and writes decoded output through a bounded buffer. It supports non-seekable input.
+
+File helpers are also available:
+
+```rust
+compress_file(source, destination)
+decompress_file(source, destination)
+```
+
+They use buffered file I/O and write to a temporary file beside the destination before renaming it into place. On failure, the temporary destination is removed so callers do not receive a valid-looking partial output.
+
+The C ABI exposes UTF-8 path wrappers:
+
+```c
+hz_native_compress_file(const char *source_path, const char *destination_path)
+hz_native_decompress_file(const char *source_path, const char *destination_path)
+```
+
+These functions return status-only `HzNativeResult` values with empty buffers on success.
+
 ## Recursive Boundaries
 
 Recursive/adaptive compression remains Swift-owned. `RustHuffmanEngine` calls the Rust C ABI for each individual layer, then uses Swift `HzArchive` parsing to set the outer recursive layer count exactly like `SwiftHuffmanEngine`.
 
 Decompression follows the same boundary: Swift reads the outer archive layer count and invokes Rust once per layer. This keeps the C ABI small and makes a future native recursion implementation optional rather than required for engine replacement.
+
+Native streaming currently covers single-layer file compression and decompression. Recursive streaming is not claimed: adaptive recursive compression still compares complete candidate archives in Swift memory. A future bounded recursive implementation should use temporary files for candidate layers and preserve the same acceptance rules.
 
 ## Compatibility
 
@@ -161,6 +203,8 @@ The archive format is shared with Swift:
 - payload: MSB-first Huffman bitstream padded with zero bits
 
 Rust-generated archives are decoded by `SwiftHuffmanEngine`, and Swift-generated archives are decoded by `RustHuffmanEngine` in the test suite.
+
+See `docs/ARCHIVE_FORMAT.md` for the full normative archive specification, byte layout, parser rules, and golden examples.
 
 Do not change the C ABI unless the Swift wrapper and header are updated together. Preserve the `CompressionEngine` behavior expected by `SwiftHuffmanEngine` so engine selection remains a simple factory choice.
 

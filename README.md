@@ -16,6 +16,7 @@ Originally created as an educational project, Hz is being rebuilt with a focus o
 - Custom `.hz` archive format
 - Modular compression pipeline
 - Rust native-engine bridge through a C ABI
+- Native file streaming APIs for single-layer Rust compression and decompression
 
 ## Architecture
 
@@ -77,6 +78,8 @@ It includes:
 The payload contains the packed Huffman bitstream. The optional padding aligns the stream to a full byte and is ignored during decoding using the stored bit count.
 
 Current archives use format version 2. The header also stores flags and an outer-only recursive layer count. Inner recursive layers write a layer count of `0`; only the outermost archive records how many Huffman layers must be removed to recover the original bytes.
+
+The normative archive specification is maintained in [`docs/ARCHIVE_FORMAT.md`](docs/ARCHIVE_FORMAT.md).
 
 ## Recursive Compression
 
@@ -178,6 +181,21 @@ Native ownership rules are intentionally simple: Swift owns input `Data`, Rust n
 
 See `docs/NATIVE_ENGINE.md` for ABI rules, native implementation details, and compatibility notes.
 
+## Native Streaming
+
+The Rust backend supports bounded-memory single-layer file compression and decompression. Compression uses two passes over a seekable source: the first pass counts frequencies and computes all header fields, then the second pass encodes bytes directly to the destination. Output does not need to be seekable.
+
+Streaming decompression reads archive metadata and payload incrementally from any `Read` source and writes decoded bytes through a bounded output buffer.
+
+Current limitations are explicit:
+
+- the in-memory C ABI functions still accept and return complete buffers;
+- the Swift reference engine remains in-memory;
+- recursive/adaptive compression remains in-memory in Swift;
+- Rust file streaming currently writes one archive layer and does not implement temp-file-backed recursive streaming.
+
+The Swift service can use the Rust path-based streaming functions when configured with `RustHuffmanEngine`.
+
 ## Demo
 
 While Huffman coding is primarily an educational algorithm today, Hz can still compress the Bible in under a second and decompress it in roughly two seconds on modern hardware.
@@ -195,8 +213,8 @@ While Huffman coding is primarily an educational algorithm today, Hz can still c
 - [x] C ABI bridge
 - [x] Rust native-engine scaffold
 - [x] Rust Huffman implementation
-- [ ] Streaming compression
-- [ ] Archive format specification
+- [x] Streaming compression
+- [x] Archive format specification
 
 ## Why?
 
