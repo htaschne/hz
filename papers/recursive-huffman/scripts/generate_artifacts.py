@@ -164,28 +164,30 @@ def generate_trajectory_plot(passes: list[dict[str, str]]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=Path, default=Path("data"))
-    parser.add_argument("--output-dir", type=Path, default=Path("generated"))
+    parser.add_argument("--data-dir", type=Path, default=Path("artifacts/data"))
+    parser.add_argument("--tables-dir", type=Path, default=Path("tables"))
+    parser.add_argument("--figures-dir", type=Path, default=Path("figures"))
     args = parser.parse_args()
 
     adaptive = read_csv(args.data_dir / "summary-adaptive.csv")
     baseline = read_csv(args.data_dir / "summary-baseline.csv")
     passes = read_csv(args.data_dir / "passes-adaptive.csv")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "results-table.tex").write_text(
+    args.tables_dir.mkdir(parents=True, exist_ok=True)
+    args.figures_dir.mkdir(parents=True, exist_ok=True)
+    (args.tables_dir / "results-table.tex").write_text(
         generate_summary_table(adaptive, baseline),
         encoding="utf-8",
     )
-    (args.output_dir / "passes-table.tex").write_text(
+    (args.tables_dir / "passes-table.tex").write_text(
         generate_pass_table(passes),
         encoding="utf-8",
     )
-    (args.output_dir / "trajectory.dat").write_text(
+    (args.figures_dir / "trajectory.dat").write_text(
         generate_trajectory_data(passes),
         encoding="utf-8",
     )
-    (args.output_dir / "trajectory-plot.tex").write_text(
+    (args.figures_dir / "trajectory-plot.tex").write_text(
         generate_trajectory_plot(passes),
         encoding="utf-8",
     )

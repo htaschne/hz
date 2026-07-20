@@ -142,21 +142,21 @@ The committed measurements use five generated workloads:
     \item \textbf{single-byte}: a degenerate stream containing one repeated byte.
 \end{itemize}
 
-For each workload, the runner records original size, output size for every attempted pass, accepted layer count, best pass, stopping reason, compression time, decompression time, platform string, and verification status. Verification decompresses the produced archive and compares the bytes with the original input. The runner writes per-pass and summary CSV files. The paper tables and plot data are generated from the CSV snapshots in \texttt{paper/data} by \texttt{paper/scripts/generate\_artifacts.py}.
+For each workload, the runner records original size, output size for every attempted pass, accepted layer count, best pass, stopping reason, compression time, decompression time, platform string, and verification status. Verification decompresses the produced archive and compares the bytes with the original input. The runner writes per-pass and summary CSV files. The paper tables and plot data are generated from the CSV snapshots in \texttt{papers/recursive-huffman/artifacts/data} by \texttt{papers/recursive-huffman/scripts/generate\_artifacts.py}.
 
 \section{Results}
 
-\input{generated/results-table.tex}
+\input{tables/results-table.tex}
 
 Table~\ref{tab:results} reports the adaptive results. The high-entropy and compressed-like workloads grew after one Huffman archive layer. This is expected: their byte distributions do not provide enough exploitable skew to offset archive metadata. Ordinary prose compressed substantially in one layer, but the next attempted layer was larger, so adaptive mode stopped at the baseline archive.
 
 The highly repetitive workloads behaved differently. Repetitive text improved from 4,432 bytes after one layer to 2,325 bytes after two accepted layers. The single-byte workload improved from 2,083 bytes after one layer to 371 bytes after two layers and 293 bytes after three layers. In both cases, the next attempted layer grew and was rejected.
 
-\input{generated/passes-table.tex}
+\input{tables/passes-table.tex}
 
 \begin{figure}[t]
 \centering
-\input{generated/trajectory-plot.tex}
+\input{figures/trajectory-plot.tex}
 \caption{Adaptive compression trajectory over all attempted passes. The y-axis is logarithmic; individual workload values are listed in Table~\ref{tab:passes}.}
 \label{fig:trajectory}
 \end{figure}
