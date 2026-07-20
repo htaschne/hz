@@ -49,14 +49,40 @@ pub fn static_c_message(message: &'static str) -> *const c_char {
         }
         "encoded bit count overflowed" => c"encoded bit count overflowed".as_ptr(),
         "encoded payload is too large" => c"encoded payload is too large".as_ptr(),
+        "encoded payload length overflowed" => c"encoded payload length overflowed".as_ptr(),
         "encoded payload length does not match bit count" => {
             c"encoded payload length does not match bit count".as_ptr()
         }
+        "archive header length overflowed" => c"archive header length overflowed".as_ptr(),
+        "archive length overflowed" => c"archive length overflowed".as_ptr(),
         "decoded output is too large" => c"decoded output is too large".as_ptr(),
+        "destination path must have a valid file name" => {
+            c"destination path must have a valid file name".as_ptr()
+        }
         "duplicate Hz frequency table entry" => c"duplicate Hz frequency table entry".as_ptr(),
         "empty archive metadata is inconsistent" => {
             c"empty archive metadata is inconsistent".as_ptr()
         }
+        "failed to create temporary destination file" => {
+            c"failed to create temporary destination file".as_ptr()
+        }
+        "failed to create temporary destination path" => {
+            c"failed to create temporary destination path".as_ptr()
+        }
+        "failed to flush destination file" => c"failed to flush destination file".as_ptr(),
+        "failed to move temporary destination file" => {
+            c"failed to move temporary destination file".as_ptr()
+        }
+        "failed to open source file" => c"failed to open source file".as_ptr(),
+        "failed to query input stream position" => {
+            c"failed to query input stream position".as_ptr()
+        }
+        "failed to read input stream" => c"failed to read input stream".as_ptr(),
+        "failed to seek input stream" => c"failed to seek input stream".as_ptr(),
+        "failed to write archive header" => c"failed to write archive header".as_ptr(),
+        "failed to write archive payload" => c"failed to write archive payload".as_ptr(),
+        "failed to write decoded output" => c"failed to write decoded output".as_ptr(),
+        "failed to write encoded payload" => c"failed to write encoded payload".as_ptr(),
         "frequency table has too many entries" => c"frequency table has too many entries".as_ptr(),
         "frequency total does not match input length" => {
             c"frequency total does not match input length".as_ptr()
@@ -80,13 +106,20 @@ pub fn static_c_message(message: &'static str) -> *const c_char {
         "invalid single-symbol Huffman bitstream" => {
             c"invalid single-symbol Huffman bitstream".as_ptr()
         }
+        "input byte count overflowed" => c"input byte count overflowed".as_ptr(),
         "missing Huffman code for input byte" => c"missing Huffman code for input byte".as_ptr(),
         "missing Huffman tree" => c"missing Huffman tree".as_ptr(),
         "non-empty archive has no encoded payload" => {
             c"non-empty archive has no encoded payload".as_ptr()
         }
+        "path must be valid UTF-8" => c"path must be valid UTF-8".as_ptr(),
+        "path pointer is null" => c"path pointer is null".as_ptr(),
         "read past end of Huffman bitstream" => c"read past end of Huffman bitstream".as_ptr(),
+        "source and destination paths must differ" => {
+            c"source and destination paths must differ".as_ptr()
+        }
         "truncated Hz archive header" => c"truncated Hz archive header".as_ptr(),
+        "truncated Hz archive payload" => c"truncated Hz archive payload".as_ptr(),
         "unsupported Hz archive flags" => c"unsupported Hz archive flags".as_ptr(),
         "unsupported Hz archive version" => c"unsupported Hz archive version".as_ptr(),
         "unsupported legacy or invalid Hz archive" => {

@@ -1,12 +1,20 @@
-mod archive;
-mod bit_reader;
-mod bit_writer;
-mod codes;
+pub mod archive;
+pub mod bit_reader;
+pub mod bit_writer;
+pub mod codes;
 mod compress;
 mod decompress;
-mod frequency;
-mod roadmap;
-mod tree;
+mod file;
+pub mod frequency;
+pub mod roadmap;
+mod stream;
+pub mod tree;
 
 pub use compress::compress;
 pub use decompress::decompress;
+pub use file::compress_file;
+pub use file::decompress_file;
+pub use stream::compress_stream;
+pub use stream::decompress_stream;
+pub use stream::CompressionStats;
+pub use stream::DecompressionStats;

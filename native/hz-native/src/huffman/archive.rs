@@ -1,3 +1,6 @@
+use std::io::Read;
+use std::io::Write;
+
 use crate::error::NativeError;
 
 use super::frequency::total_frequency;
@@ -76,105 +79,30 @@ impl HzArchive {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, NativeError> {
-        let entry_count = self
-            .frequencies
-            .iter()
-            .filter(|&&frequency| frequency > 0)
-            .count();
-        let entry_count = u16::try_from(entry_count)
-            .map_err(|_| NativeError::Internal("frequency table has too many entries"))?;
-
-        let mut output = Vec::with_capacity(26 + usize::from(entry_count) * 9 + self.payload.len());
-        output.extend_from_slice(&Self::MAGIC);
-        output.push(Self::VERSION);
-        output.push(Self::FLAGS);
-        output.extend_from_slice(&self.recursive_layer_count.to_le_bytes());
-        output.extend_from_slice(&self.original_byte_count.to_le_bytes());
-        output.extend_from_slice(&self.encoded_bit_count.to_le_bytes());
-        output.extend_from_slice(&entry_count.to_le_bytes());
-
-        for (byte, &frequency) in self.frequencies.iter().enumerate() {
-            if frequency == 0 {
-                continue;
-            }
-
-            output.push(byte as u8);
-            output.extend_from_slice(&frequency.to_le_bytes());
-        }
-
-        output.extend_from_slice(&self.payload);
+        let mut output = Vec::new();
+        self.write_to(&mut output)?;
         Ok(output)
+    }
+
+    pub fn write_to<W: Write>(&self, output: &mut W) -> Result<u64, NativeError> {
+        write_archive_header(
+            output,
+            self.recursive_layer_count,
+            self.original_byte_count,
+            self.encoded_bit_count,
+            &self.frequencies,
+        )?;
+        output
+            .write_all(&self.payload)
+            .map_err(|_| NativeError::Internal("failed to write archive payload"))?;
+        archive_header_length(&self.frequencies)
+            .and_then(|header_len| checked_add_u64(header_len, self.payload.len() as u64))
     }
 
     pub fn parse(data: &[u8]) -> Result<Self, NativeError> {
         let mut reader = ArchiveReader::new(data);
-
-        let magic = reader.read_bytes(Self::MAGIC.len())?;
-        if magic != Self::MAGIC {
-            return Err(NativeError::InvalidArgument(
-                "unsupported legacy or invalid Hz archive",
-            ));
-        }
-
-        let version = reader.read_u8()?;
-        if version != Self::VERSION {
-            return Err(NativeError::InvalidArgument(
-                "unsupported Hz archive version",
-            ));
-        }
-
-        let flags = reader.read_u8()?;
-        let recursive_layer_count = reader.read_u16()?;
-        let original_byte_count = reader.read_u64()?;
-        let encoded_bit_count = reader.read_u64()?;
-        let entry_count = reader.read_u16()?;
-
-        if flags != Self::FLAGS {
-            return Err(NativeError::InvalidArgument("unsupported Hz archive flags"));
-        }
-
-        if recursive_layer_count == 0 && original_byte_count == 0 && encoded_bit_count != 0 {
-            return Err(NativeError::InvalidArgument(
-                "invalid recursive layer count in Hz archive",
-            ));
-        }
-
-        let mut frequencies = [0; 256];
-        for _ in 0..entry_count {
-            let byte = reader.read_u8()?;
-            let frequency = reader.read_u64()?;
-            if frequency == 0 {
-                return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
-            }
-
-            let slot = &mut frequencies[usize::from(byte)];
-            if *slot != 0 {
-                return Err(NativeError::InvalidArgument(
-                    "duplicate Hz frequency table entry",
-                ));
-            }
-
-            *slot = frequency;
-        }
-
-        let frequency_total = checked_total_frequency(&frequencies)?;
-        if frequency_total != original_byte_count {
-            return Err(NativeError::InvalidArgument(
-                "Hz frequency total does not match original byte count",
-            ));
-        }
-
-        if original_byte_count == 0 {
-            if frequencies.iter().any(|&frequency| frequency > 0) || encoded_bit_count != 0 {
-                return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
-            }
-        } else if frequencies.iter().all(|&frequency| frequency == 0) || encoded_bit_count == 0 {
-            return Err(NativeError::InvalidArgument(
-                "invalid encoded bit count in Hz archive",
-            ));
-        }
-
-        let expected_payload_len = expected_payload_length(encoded_bit_count)?;
+        let header = read_archive_header(&mut reader)?;
+        let expected_payload_len = expected_payload_length(header.encoded_bit_count)?;
         let payload = reader.read_remaining();
         if payload.len() != expected_payload_len {
             return Err(NativeError::InvalidArgument(
@@ -183,10 +111,10 @@ impl HzArchive {
         }
 
         Ok(Self {
-            recursive_layer_count,
-            original_byte_count,
-            encoded_bit_count,
-            frequencies,
+            recursive_layer_count: header.recursive_layer_count,
+            original_byte_count: header.original_byte_count,
+            encoded_bit_count: header.encoded_bit_count,
+            frequencies: header.frequencies,
             payload: payload.to_vec(),
         })
     }
@@ -208,9 +136,214 @@ impl HzArchive {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HzArchiveHeader {
+    pub recursive_layer_count: u16,
+    pub original_byte_count: u64,
+    pub encoded_bit_count: u64,
+    pub frequencies: FrequencyTable,
+    pub header_byte_count: u64,
+    pub payload_byte_count: u64,
+}
+
+pub fn write_archive_header<W: Write>(
+    output: &mut W,
+    recursive_layer_count: u16,
+    original_byte_count: u64,
+    encoded_bit_count: u64,
+    frequencies: &FrequencyTable,
+) -> Result<u64, NativeError> {
+    let entry_count = frequencies
+        .iter()
+        .filter(|&&frequency| frequency > 0)
+        .count();
+    let entry_count = u16::try_from(entry_count)
+        .map_err(|_| NativeError::Internal("frequency table has too many entries"))?;
+
+    output
+        .write_all(&HzArchive::MAGIC)
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    output
+        .write_all(&[HzArchive::VERSION, HzArchive::FLAGS])
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    output
+        .write_all(&recursive_layer_count.to_le_bytes())
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    output
+        .write_all(&original_byte_count.to_le_bytes())
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    output
+        .write_all(&encoded_bit_count.to_le_bytes())
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    output
+        .write_all(&entry_count.to_le_bytes())
+        .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+
+    for (byte, &frequency) in frequencies.iter().enumerate() {
+        if frequency == 0 {
+            continue;
+        }
+
+        output
+            .write_all(&[byte as u8])
+            .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+        output
+            .write_all(&frequency.to_le_bytes())
+            .map_err(|_| NativeError::Internal("failed to write archive header"))?;
+    }
+
+    archive_header_length(frequencies)
+}
+
+pub fn read_archive_header<R: ArchiveRead>(reader: &mut R) -> Result<HzArchiveHeader, NativeError> {
+    let magic = reader.read_bytes(HzArchive::MAGIC.len())?;
+    if magic != HzArchive::MAGIC {
+        return Err(NativeError::InvalidArgument(
+            "unsupported legacy or invalid Hz archive",
+        ));
+    }
+
+    let version = reader.read_u8()?;
+    if version != HzArchive::VERSION {
+        return Err(NativeError::InvalidArgument(
+            "unsupported Hz archive version",
+        ));
+    }
+
+    let flags = reader.read_u8()?;
+    let recursive_layer_count = reader.read_u16()?;
+    let original_byte_count = reader.read_u64()?;
+    let encoded_bit_count = reader.read_u64()?;
+    let entry_count = reader.read_u16()?;
+
+    if flags != HzArchive::FLAGS {
+        return Err(NativeError::InvalidArgument("unsupported Hz archive flags"));
+    }
+
+    if recursive_layer_count == 0 && original_byte_count == 0 && encoded_bit_count != 0 {
+        return Err(NativeError::InvalidArgument(
+            "invalid recursive layer count in Hz archive",
+        ));
+    }
+
+    let mut frequencies = [0; 256];
+    for _ in 0..entry_count {
+        let byte = reader.read_u8()?;
+        let frequency = reader.read_u64()?;
+        if frequency == 0 {
+            return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
+        }
+
+        let slot = &mut frequencies[usize::from(byte)];
+        if *slot != 0 {
+            return Err(NativeError::InvalidArgument(
+                "duplicate Hz frequency table entry",
+            ));
+        }
+
+        *slot = frequency;
+    }
+
+    let frequency_total = checked_total_frequency(&frequencies)?;
+    if frequency_total != original_byte_count {
+        return Err(NativeError::InvalidArgument(
+            "Hz frequency total does not match original byte count",
+        ));
+    }
+
+    if original_byte_count == 0 {
+        if frequencies.iter().any(|&frequency| frequency > 0) || encoded_bit_count != 0 {
+            return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
+        }
+    } else if frequencies.iter().all(|&frequency| frequency == 0) || encoded_bit_count == 0 {
+        return Err(NativeError::InvalidArgument(
+            "invalid encoded bit count in Hz archive",
+        ));
+    }
+
+    let payload_byte_count = expected_payload_length(encoded_bit_count)? as u64;
+    Ok(HzArchiveHeader {
+        recursive_layer_count,
+        original_byte_count,
+        encoded_bit_count,
+        frequencies,
+        header_byte_count: archive_header_length(&frequencies)?,
+        payload_byte_count,
+    })
+}
+
 fn expected_payload_length(encoded_bit_count: u64) -> Result<usize, NativeError> {
     let length = encoded_bit_count / 8 + u64::from(!encoded_bit_count.is_multiple_of(8));
     usize::try_from(length).map_err(|_| NativeError::Internal("encoded payload is too large"))
+}
+
+pub fn payload_length(encoded_bit_count: u64) -> Result<u64, NativeError> {
+    expected_payload_length(encoded_bit_count).map(|length| length as u64)
+}
+
+pub fn archive_header_length(frequencies: &FrequencyTable) -> Result<u64, NativeError> {
+    let entry_count = frequencies
+        .iter()
+        .filter(|&&frequency| frequency > 0)
+        .count();
+    let entry_count = u64::try_from(entry_count)
+        .map_err(|_| NativeError::Internal("frequency table has too many entries"))?;
+    checked_add_u64(
+        26,
+        entry_count
+            .checked_mul(9)
+            .ok_or(NativeError::Internal("archive header length overflowed"))?,
+    )
+}
+
+fn checked_add_u64(lhs: u64, rhs: u64) -> Result<u64, NativeError> {
+    lhs.checked_add(rhs)
+        .ok_or(NativeError::Internal("archive length overflowed"))
+}
+
+pub trait ArchiveRead {
+    fn read_u8(&mut self) -> Result<u8, NativeError>;
+    fn read_u16(&mut self) -> Result<u16, NativeError>;
+    fn read_u64(&mut self) -> Result<u64, NativeError>;
+    fn read_bytes(&mut self, count: usize) -> Result<Vec<u8>, NativeError>;
+}
+
+pub struct StreamingArchiveReader<'a, R> {
+    inner: &'a mut R,
+}
+
+impl<'a, R: Read> StreamingArchiveReader<'a, R> {
+    pub fn new(inner: &'a mut R) -> Self {
+        Self { inner }
+    }
+}
+
+impl<R: Read> ArchiveRead for StreamingArchiveReader<'_, R> {
+    fn read_u8(&mut self) -> Result<u8, NativeError> {
+        let mut byte = [0];
+        self.inner
+            .read_exact(&mut byte)
+            .map_err(|_| NativeError::InvalidArgument("truncated Hz archive header"))?;
+        Ok(byte[0])
+    }
+
+    fn read_u16(&mut self) -> Result<u16, NativeError> {
+        let bytes = self.read_bytes(2)?;
+        Ok(u16::from_le_bytes(bytes.try_into().expect("two bytes")))
+    }
+
+    fn read_u64(&mut self) -> Result<u64, NativeError> {
+        let bytes = self.read_bytes(8)?;
+        Ok(u64::from_le_bytes(bytes.try_into().expect("eight bytes")))
+    }
+
+    fn read_bytes(&mut self, count: usize) -> Result<Vec<u8>, NativeError> {
+        let mut bytes = vec![0; count];
+        self.inner
+            .read_exact(&mut bytes)
+            .map_err(|_| NativeError::InvalidArgument("truncated Hz archive header"))?;
+        Ok(bytes)
+    }
 }
 
 fn checked_total_frequency(frequencies: &FrequencyTable) -> Result<u64, NativeError> {
@@ -270,6 +403,24 @@ impl<'a> ArchiveReader<'a> {
         let remaining = &self.data[self.offset..];
         self.offset = self.data.len();
         remaining
+    }
+}
+
+impl ArchiveRead for ArchiveReader<'_> {
+    fn read_u8(&mut self) -> Result<u8, NativeError> {
+        ArchiveReader::read_u8(self)
+    }
+
+    fn read_u16(&mut self) -> Result<u16, NativeError> {
+        ArchiveReader::read_u16(self)
+    }
+
+    fn read_u64(&mut self) -> Result<u64, NativeError> {
+        ArchiveReader::read_u64(self)
+    }
+
+    fn read_bytes(&mut self, count: usize) -> Result<Vec<u8>, NativeError> {
+        ArchiveReader::read_bytes(self, count).map(<[u8]>::to_vec)
     }
 }
 
@@ -386,6 +537,42 @@ mod tests {
         assert_eq!(
             HzArchive::parse(&bytes).expect_err("payload mismatch"),
             NativeError::InvalidArgument("Hz payload length does not match encoded bit count")
+        );
+    }
+
+    #[test]
+    fn golden_empty_archive_matches_specification() {
+        assert_eq!(
+            archive_for(b"").serialize().expect("serialize"),
+            vec![
+                0x48, 0x5A, 0x46, 0x31, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]
+        );
+    }
+
+    #[test]
+    fn golden_single_symbol_archive_matches_specification() {
+        assert_eq!(
+            archive_for(b"aaaa").serialize().expect("serialize"),
+            vec![
+                0x48, 0x5A, 0x46, 0x31, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x61, 0x04,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]
+        );
+    }
+
+    #[test]
+    fn golden_banana_archive_matches_specification() {
+        assert_eq!(
+            archive_for(b"banana").serialize().expect("serialize"),
+            vec![
+                0x48, 0x5A, 0x46, 0x31, 0x02, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x61, 0x03,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x62, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x6E, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9B, 0x00,
+            ]
         );
     }
 }

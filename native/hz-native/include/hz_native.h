@@ -44,6 +44,16 @@ HzNativeResult hz_native_decompress(
     size_t input_length
 );
 
+HzNativeResult hz_native_compress_file(
+    const char *source_path,
+    const char *destination_path
+);
+
+HzNativeResult hz_native_decompress_file(
+    const char *source_path,
+    const char *destination_path
+);
+
 // Releases Rust-owned output memory returned inside HzNativeResult.
 //
 // Ownership rules:

@@ -1,5 +1,7 @@
+use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::Path;
 use std::ptr;
 use std::slice;
 
@@ -87,6 +89,26 @@ pub extern "C" fn hz_native_decompress(input: *const u8, input_length: usize) ->
 }
 
 #[no_mangle]
+pub extern "C" fn hz_native_compress_file(
+    source_path: *const c_char,
+    destination_path: *const c_char,
+) -> HzNativeResult {
+    ffi_path_result_from(source_path, destination_path, |source, destination| {
+        huffman::compress_file(source, destination)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn hz_native_decompress_file(
+    source_path: *const c_char,
+    destination_path: *const c_char,
+) -> HzNativeResult {
+    ffi_path_result_from(source_path, destination_path, |source, destination| {
+        huffman::decompress_file(source, destination)
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn hz_native_result_free(result: HzNativeResult) {
     if result.buffer.data.is_null() || result.buffer.length == 0 {
         return;
@@ -117,6 +139,27 @@ fn ffi_result_from(
     }
 }
 
+fn ffi_path_result_from<T>(
+    source_path: *const c_char,
+    destination_path: *const c_char,
+    operation: impl FnOnce(&Path, &Path) -> Result<T, NativeError>,
+) -> HzNativeResult {
+    match catch_unwind(AssertUnwindSafe(|| {
+        let source_path = path_from_c_string(source_path).map_err(HzNativeResult::error)?;
+        let destination_path =
+            path_from_c_string(destination_path).map_err(HzNativeResult::error)?;
+        operation(Path::new(source_path), Path::new(destination_path))
+            .map(|_| HzNativeResult::ok(Vec::new()))
+            .map_err(HzNativeResult::error)
+    })) {
+        Ok(Ok(result)) => result,
+        Ok(Err(error_result)) => error_result,
+        Err(_) => HzNativeResult::error(NativeError::Internal(
+            "Rust native engine panicked across FFI boundary",
+        )),
+    }
+}
+
 fn input_slice<'a>(input: *const u8, input_length: usize) -> Result<&'a [u8], NativeError> {
     if input.is_null() {
         return if input_length == 0 {
@@ -131,11 +174,25 @@ fn input_slice<'a>(input: *const u8, input_length: usize) -> Result<&'a [u8], Na
     Ok(unsafe { slice::from_raw_parts(input, input_length) })
 }
 
+fn path_from_c_string<'a>(path: *const c_char) -> Result<&'a str, NativeError> {
+    if path.is_null() {
+        return Err(NativeError::InvalidArgument("path pointer is null"));
+    }
+
+    unsafe { CStr::from_ptr(path) }
+        .to_str()
+        .map_err(|_| NativeError::InvalidArgument("path must be valid UTF-8"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::CStr;
+    use std::ffi::CString;
+    use std::fs;
     use std::ptr;
     use std::slice;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     use super::*;
 
@@ -207,6 +264,42 @@ mod tests {
     }
 
     #[test]
+    fn file_compression_round_trips_through_streaming_ffi() {
+        let directory = unique_temp_directory();
+        fs::create_dir_all(&directory).expect("temp dir");
+        let source = directory.join("input.bin");
+        let archive = directory.join("input.hz");
+        let output = directory.join("output.bin");
+        let original = b"file ffi banana banana";
+        fs::write(&source, original).expect("write source");
+
+        let source_c = CString::new(source.to_string_lossy().as_bytes()).expect("source c string");
+        let archive_c =
+            CString::new(archive.to_string_lossy().as_bytes()).expect("archive c string");
+        let output_c = CString::new(output.to_string_lossy().as_bytes()).expect("output c string");
+
+        let compressed = hz_native_compress_file(source_c.as_ptr(), archive_c.as_ptr());
+        assert_eq!(compressed.status, HzNativeStatus::Ok);
+        hz_native_result_free(compressed);
+        assert!(archive.exists());
+
+        let decompressed = hz_native_decompress_file(archive_c.as_ptr(), output_c.as_ptr());
+        assert_eq!(decompressed.status, HzNativeStatus::Ok);
+        hz_native_result_free(decompressed);
+
+        assert_eq!(fs::read(output).expect("read output"), original);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn file_compression_rejects_null_path() {
+        let result = hz_native_compress_file(ptr::null(), ptr::null());
+
+        assert_eq!(result.status, HzNativeStatus::InvalidArgument);
+        hz_native_result_free(result);
+    }
+
+    #[test]
     fn result_free_handles_zero_value_result() {
         hz_native_result_free(HzNativeResult {
             status: HzNativeStatus::Ok,
@@ -227,5 +320,13 @@ mod tests {
         let result = ffi_result_from(ptr::null(), 0, panicking_operation);
         assert_eq!(result.status, HzNativeStatus::InternalError);
         hz_native_result_free(result);
+    }
+
+    fn unique_temp_directory() -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("hz-native-ffi-{unique}"))
     }
 }
