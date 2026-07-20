@@ -1,8 +1,8 @@
 # Hz Benchmarks
 
-This directory contains a repeatable command-line benchmark runner for the Swift reference engine.
+This directory contains a repeatable command-line benchmark runner for the Swift reference engine and the Rust native backend.
 
-The runner compiles the production engine source files with `swiftc -O`; it does not contain a second Huffman implementation.
+The runner compiles the production engine source files with `swiftc -O`; it does not contain a benchmark-only Huffman implementation.
 
 ## Commands
 
@@ -10,6 +10,18 @@ Baseline single-pass Huffman compression:
 
 ```bash
 benchmarks/run.sh --max-depth 0
+```
+
+Explicit Swift engine run:
+
+```bash
+benchmarks/run.sh --engine swift --max-depth 0
+```
+
+Native Rust engine run:
+
+```bash
+benchmarks/run.sh --engine rust --max-depth 0
 ```
 
 Adaptive recursive compression:
@@ -70,3 +82,4 @@ Important CSV fields include:
 - `decompression_seconds`
 - `verified`
 
+Rust mode builds `native/hz-native` before compiling the runner and verifies that decompression restores the original workload bytes.

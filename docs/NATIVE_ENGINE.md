@@ -1,6 +1,6 @@
 # Native Engine Developer Guide
 
-Hz now links a Rust static library into the macOS Swift application through a C ABI. The native engine is infrastructure only: the Rust Huffman compression and decompression pipeline is intentionally unimplemented.
+Hz links a Rust static library into the macOS Swift application through a C ABI. The Rust backend now implements the single-layer Huffman codec and the Swift wrapper preserves the same recursive compression contract as the Swift reference engine.
 
 ## Directory Layout
 
@@ -20,8 +20,14 @@ native/
         └── huffman/
             ├── compress.rs
             ├── decompress.rs
+            ├── archive.rs
+            ├── bit_reader.rs
+            ├── bit_writer.rs
+            ├── codes.rs
+            ├── frequency.rs
             ├── mod.rs
-            └── roadmap.rs
+            ├── roadmap.rs
+            └── tree.rs
 ```
 
 Swift wrapper code lives in:
@@ -107,34 +113,54 @@ Avoid `unwrap`, `expect`, unchecked indexing, and panic-prone code in exported p
 
 ## Current Rust Behavior
 
-The Rust Huffman entry points are stubs:
+The Rust Huffman entry points implement one `.hz` layer:
 
 ```text
 src/huffman/compress.rs
 src/huffman/decompress.rs
 ```
 
-They return:
+Compression:
 
-```text
-HZ_NATIVE_NOT_IMPLEMENTED
-```
+- counts byte frequencies;
+- builds the same deterministic Huffman tree as the Swift reference implementation;
+- generates tree-path codes for archive payload compatibility;
+- also builds canonical codes internally as a future interchange representation;
+- writes the payload MSB-first with zero padding;
+- serializes the Swift-compatible `HZF1` version 2 archive.
 
-with a stable message. This is intentional. The Swift reference engine remains the production default.
+Decompression:
 
-## Future Huffman Pipeline
+- parses and validates the `HZF1` version 2 archive;
+- rebuilds the Huffman tree from the stored frequency table;
+- reads only `encodedBitCount` meaningful bits;
+- stops after `originalByteCount` output bytes;
+- validates single-symbol archives by requiring every meaningful bit to be `0`.
 
-Implement the Rust engine behind these component boundaries:
+Padding bits are never decoded as output. Invalid magic, unsupported versions or flags, truncated headers, malformed frequency tables, and payload length mismatches report `HZ_NATIVE_INVALID_ARGUMENT`.
 
-- frequency table
-- tree construction
-- code generation
-- bit writer
-- bit reader
-- archive serialization
-- archive parsing
-- recursive compression
-- recursive decompression
+The Swift reference engine remains the production default through `CompressionEngineFactory.defaultKind == .swift`. Selecting `.rust` uses the native single-layer codec through `RustHuffmanEngine`.
+
+## Recursive Boundaries
+
+Recursive/adaptive compression remains Swift-owned. `RustHuffmanEngine` calls the Rust C ABI for each individual layer, then uses Swift `HzArchive` parsing to set the outer recursive layer count exactly like `SwiftHuffmanEngine`.
+
+Decompression follows the same boundary: Swift reads the outer archive layer count and invokes Rust once per layer. This keeps the C ABI small and makes a future native recursion implementation optional rather than required for engine replacement.
+
+## Compatibility
+
+The archive format is shared with Swift:
+
+- magic bytes: `HZF1`
+- version: `2`
+- flags: `0`
+- recursive layer count: little-endian `UInt16`
+- original byte count: little-endian `UInt64`
+- encoded bit count: little-endian `UInt64`
+- sorted frequency entries: byte plus little-endian `UInt64`
+- payload: MSB-first Huffman bitstream padded with zero bits
+
+Rust-generated archives are decoded by `SwiftHuffmanEngine`, and Swift-generated archives are decoded by `RustHuffmanEngine` in the test suite.
 
 Do not change the C ABI unless the Swift wrapper and header are updated together. Preserve the `CompressionEngine` behavior expected by `SwiftHuffmanEngine` so engine selection remains a simple factory choice.
 
@@ -146,10 +172,10 @@ Swift reference engine:
 benchmarks/run.sh --engine swift --adaptive
 ```
 
-Rust bridge probe:
+Rust native engine:
 
 ```bash
-benchmarks/run.sh --engine rust
+benchmarks/run.sh --engine rust --max-depth 0
 ```
 
-Rust mode currently builds and calls the bridge, reports availability, then exits with code `2` and a not-implemented message. It does not emit CSV benchmark rows until the Rust Huffman pipeline exists.
+Rust mode builds the native static library, compiles the benchmark runner with `HZ_NATIVE_BRIDGE`, runs compression/decompression through `RustHuffmanEngine`, verifies the output, and emits the same CSV rows as Swift mode.

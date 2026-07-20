@@ -34,7 +34,7 @@ Hz/
 └── Tests/
 ```
 
-The Swift implementation acts as the working reference implementation. The repository also contains a Rust static library linked through a small C ABI. That Rust bridge is callable from Swift, but Rust Huffman compression and decompression are intentionally not implemented yet.
+The Swift implementation acts as the working reference implementation. The repository also contains a Rust static library linked through a small C ABI. The Rust backend implements the same single-layer `.hz` Huffman codec, while Swift still owns UI workflows and recursive layer orchestration.
 
 ```text
 SwiftUI
@@ -49,7 +49,7 @@ CompressionEngine
             ↓
        hz-native Rust crate
             ↓
-      Huffman pipeline TODO
+       Huffman pipeline
 ```
 
 ## The `.hz` Format
@@ -138,13 +138,13 @@ Forced recursive run:
 benchmarks/run.sh --max-depth 3
 ```
 
-Native Rust bridge probe:
+Native Rust engine run:
 
 ```bash
-benchmarks/run.sh --engine rust
+benchmarks/run.sh --engine rust --max-depth 0
 ```
 
-The Rust benchmark mode builds and calls the native bridge, reports that the bridge is available, then exits with a nonzero status because Rust Huffman compression is not implemented. It does not write benchmark CSV rows for the unimplemented engine.
+The Rust benchmark mode builds the native library, runs compression/decompression through `RustHuffmanEngine`, verifies the output, and writes benchmark CSV rows.
 
 Analyze generated CSV files:
 
@@ -176,7 +176,7 @@ The Xcode app target builds `native/hz-native` before Swift links. The checked-i
 
 Native ownership rules are intentionally simple: Swift owns input `Data`, Rust never retains input pointers, Rust owns returned buffers, and Swift releases those buffers by calling `hz_native_result_free` through `RustHuffmanEngine`.
 
-See `docs/NATIVE_ENGINE.md` for ABI rules and the future Rust implementation roadmap.
+See `docs/NATIVE_ENGINE.md` for ABI rules, native implementation details, and compatibility notes.
 
 ## Demo
 
@@ -194,7 +194,7 @@ While Huffman coding is primarily an educational algorithm today, Hz can still c
 - [x] Recursive benchmark harness
 - [x] C ABI bridge
 - [x] Rust native-engine scaffold
-- [ ] Rust Huffman implementation
+- [x] Rust Huffman implementation
 - [ ] Streaming compression
 - [ ] Archive format specification
 
