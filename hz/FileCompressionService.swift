@@ -34,7 +34,7 @@ struct FileCompressionService {
         onProgress: @escaping (String, Double) -> Void
     ) throws {
         if let rustEngine = engine as? RustHuffmanEngine {
-            onProgress("Compressing file with native streaming engine...", 0.35)
+            onProgress("Compressing with native streaming backend...", -1)
             try rustEngine.compressFile(at: sourceURL, to: destinationURL)
             onProgress("Compression complete.", 1.0)
             return
@@ -64,7 +64,7 @@ struct FileCompressionService {
         onProgress: @escaping (String, Double) -> Void
     ) throws {
         if let rustEngine = engine as? RustHuffmanEngine {
-            onProgress("Decompressing file with native streaming engine...", 0.35)
+            onProgress("Decompressing with native streaming backend...", -1)
             try rustEngine.decompressFile(at: sourceURL, to: destinationURL)
             onProgress("Decompression complete.", 1.0)
             return
