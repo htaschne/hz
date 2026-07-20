@@ -30,12 +30,6 @@ impl NativeError {
 
 pub fn static_c_message(message: &'static str) -> *const c_char {
     match message {
-        "Rust Huffman compression is not implemented yet" => {
-            c"Rust Huffman compression is not implemented yet".as_ptr()
-        }
-        "Rust Huffman decompression is not implemented yet" => {
-            c"Rust Huffman decompression is not implemented yet".as_ptr()
-        }
         "input pointer is null but input length is nonzero" => {
             c"input pointer is null but input length is nonzero".as_ptr()
         }
