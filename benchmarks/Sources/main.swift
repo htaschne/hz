@@ -46,10 +46,6 @@ let startDate = Date()
 do {
     let options = try parseArguments(Array(CommandLine.arguments.dropFirst()))
 
-    if options.engineKind == .rust {
-        try runRustBridgeProbe()
-    }
-
     let fileManager = FileManager.default
     let outputURL = URL(fileURLWithPath: options.outputPath)
     let rawURL = outputURL.appendingPathComponent("raw", isDirectory: true)
@@ -75,7 +71,7 @@ do {
         "workload,mode,configured_max_depth,original_bytes,final_archive_bytes,best_pass,best_archive_bytes,accepted_layer_count,stopping_reason,compression_seconds,decompression_seconds,verified,platform"
     ]
 
-    let engine = SwiftHuffmanEngine()
+    let engine = try makeEngine(options.engineKind)
 
     for workload in workloads {
         let original = try Data(contentsOf: workload.url)
@@ -194,28 +190,22 @@ func parseArguments(_ arguments: [String]) throws -> BenchmarkOptions {
     return options
 }
 
-func runRustBridgeProbe() throws -> Never {
-    #if HZ_NATIVE_BRIDGE
-    let info = RustHuffmanEngine.info
-    print("Rust bridge available: \(info.isBridgeAvailable)")
-    print("Rust native ABI version: \(info.abiVersion)")
-    print("Rust native version: \(info.version)")
-    print("Rust Huffman compression supported: \(info.supportsCompression)")
+func makeEngine(_ kind: BenchmarkEngineKind) throws -> any CompressionEngine {
+    switch kind {
+    case .swift:
+        return SwiftHuffmanEngine()
+    case .rust:
+        #if HZ_NATIVE_BRIDGE
+        let info = RustHuffmanEngine.info
+        guard info.isBridgeAvailable, info.supportsCompression else {
+            throw BenchmarkError.rustEngineUnavailable
+        }
 
-    do {
-        _ = try RustHuffmanEngine().compress(Data(), options: .singlePass)
-        fputs("benchmark error: Rust Huffman engine unexpectedly produced output\n", stderr)
-        exit(3)
-    } catch NativeEngineError.notImplemented(let message) {
-        fputs("benchmark error: Rust Huffman engine not implemented: \(message)\n", stderr)
-        exit(2)
-    } catch {
-        fputs("benchmark error: Rust bridge failed: \(error)\n", stderr)
-        exit(1)
+        return RustHuffmanEngine()
+        #else
+        throw BenchmarkError.rustEngineUnavailable
+        #endif
     }
-    #else
-    throw BenchmarkError.rustEngineUnavailable
-    #endif
 }
 
 func value(after argument: String, in arguments: [String], at index: inout Int) throws -> String {

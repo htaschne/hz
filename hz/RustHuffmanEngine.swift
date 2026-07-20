@@ -16,35 +16,85 @@ struct RustEngineInfo: Equatable {
 }
 
 struct RustHuffmanEngine: CompressionEngine {
+    static let maximumAdditionalDepth = 32
+
     static var info: RustEngineInfo {
         RustEngineInfo(
             abiVersion: hz_native_abi_version(),
             version: String(cString: hz_native_version_string()),
             isBridgeAvailable: hz_native_is_available(),
-            supportsCompression: false
+            supportsCompression: true
         )
     }
 
     func compress(_ input: Data, options: CompressionOptions) throws -> CompressionResult {
-        let archive = try callNative(input, operation: hz_native_compress)
-        return CompressionResult(
-            archive: archive,
-            acceptedLayerCount: 1,
-            stoppingReason: .reachedMaxDepth,
-            passes: [
-                CompressionPass(
-                    layer: 1,
-                    inputByteCount: input.count,
-                    outputByteCount: archive.count,
-                    ratio: input.isEmpty ? 0 : Double(archive.count) / Double(input.count),
-                    accepted: true
-                )
-            ]
-        )
+        let run = try RecursiveCompressionController.run(
+            input: input,
+            options: options,
+            maximumAdditionalDepth: Self.maximumAdditionalDepth
+        ) { input in
+            try makeLayerArchive(from: input, recursiveLayerCount: 0)
+        }
+
+        return try makeResult(from: run)
     }
 
     func decompress(_ archive: Data, options: DecompressionOptions) throws -> Data {
-        try callNative(archive, operation: hz_native_decompress)
+        let outerArchive = try HzArchive.parse(archive)
+        let recordedLayerCount = Int(outerArchive.recursiveLayerCount == 0 ? 1 : outerArchive.recursiveLayerCount)
+
+        guard recordedLayerCount > 0 else {
+            throw CompressionEngineError.invalidRecordedLayerCount(outerArchive.recursiveLayerCount)
+        }
+
+        let layersToRemove = options.maxAdditionalDepth
+            .map { min($0 + 1, recordedLayerCount) }
+            ?? recordedLayerCount
+
+        var currentBytes = archive
+
+        for layerIndex in 1...layersToRemove {
+            currentBytes = try callNative(currentBytes, operation: hz_native_decompress)
+
+            if layerIndex < layersToRemove {
+                guard currentBytes.starts(with: HzArchive.magic) else {
+                    throw CompressionEngineError.missingNestedArchive(expectedLayer: layerIndex + 1)
+                }
+
+                _ = try HzArchive.parse(currentBytes)
+            }
+        }
+
+        return currentBytes
+    }
+
+    private func makeLayerArchive(from input: Data, recursiveLayerCount: UInt16) throws -> Data {
+        try HzArchive.parse(callNative(input, operation: hz_native_compress))
+            .withRecursiveLayerCount(recursiveLayerCount)
+            .serialize()
+    }
+
+    private func makeResult(from run: RecursiveCompressionRun) throws -> CompressionResult {
+        guard let parsedArchive = try? HzArchive.parse(run.archive) else {
+            throw CompressionEngineError.emptyCompressionPasses
+        }
+
+        guard run.acceptedLayerCount <= Int(UInt16.max) else {
+            throw CompressionEngineError.maximumDepthExceedsSafetyLimit(
+                maximum: Self.maximumAdditionalDepth
+            )
+        }
+
+        let archive = try parsedArchive
+            .withRecursiveLayerCount(UInt16(run.acceptedLayerCount))
+            .serialize()
+
+        return CompressionResult(
+            archive: archive,
+            acceptedLayerCount: run.acceptedLayerCount,
+            stoppingReason: run.stoppingReason,
+            passes: run.passes
+        )
     }
 
     private func callNative(
