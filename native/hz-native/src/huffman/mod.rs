@@ -1,3 +1,4 @@
+mod archive;
 mod bit_writer;
 mod codes;
 mod compress;

@@ -57,7 +57,21 @@ pub fn static_c_message(message: &'static str) -> *const c_char {
             c"canonical Huffman code space overflowed".as_ptr()
         }
         "encoded bit count overflowed" => c"encoded bit count overflowed".as_ptr(),
+        "encoded payload is too large" => c"encoded payload is too large".as_ptr(),
+        "encoded payload length does not match bit count" => {
+            c"encoded payload length does not match bit count".as_ptr()
+        }
+        "empty archive metadata is inconsistent" => {
+            c"empty archive metadata is inconsistent".as_ptr()
+        }
+        "frequency table has too many entries" => c"frequency table has too many entries".as_ptr(),
+        "frequency total does not match input length" => {
+            c"frequency total does not match input length".as_ptr()
+        }
         "missing Huffman code for input byte" => c"missing Huffman code for input byte".as_ptr(),
+        "non-empty archive has no encoded payload" => {
+            c"non-empty archive has no encoded payload".as_ptr()
+        }
         _ => c"unknown Rust native engine error".as_ptr(),
     }
 }

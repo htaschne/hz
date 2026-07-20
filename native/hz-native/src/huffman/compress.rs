@@ -1,5 +1,6 @@
 use crate::error::NativeError;
 
+use super::archive::HzArchive;
 use super::bit_writer::encode_payload;
 use super::codes::{code_lengths, make_canonical_code_table, make_tree_code_table};
 use super::frequency::byte_frequencies;
@@ -11,6 +12,8 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>, NativeError> {
     debug_assert_eq!(total_frequency(&frequencies), input.len() as u64);
 
     let tree = build_huffman_tree(&frequencies);
+    let mut payload = Vec::new();
+    let mut encoded_bit_count = 0;
 
     if let Some(tree) = &tree {
         debug_assert_eq!(tree.frequency(), input.len() as u64);
@@ -32,13 +35,18 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>, NativeError> {
         let encoded = encode_payload(input, &code_table)?;
         debug_assert_eq!(
             encoded.bytes.len() as u64,
-            encoded.bit_count / 8 + u64::from(encoded.bit_count % 8 != 0)
+            encoded.bit_count / 8 + u64::from(!encoded.bit_count.is_multiple_of(8))
         );
+        payload = encoded.bytes;
+        encoded_bit_count = encoded.bit_count;
     }
 
-    // TODO(native-huffman): implement archive serialization and recursive
-    // compression boundaries.
-    Err(NativeError::NotImplemented(
-        "Rust Huffman compression is not implemented yet",
-    ))
+    HzArchive::new(
+        0,
+        input.len() as u64,
+        encoded_bit_count,
+        frequencies,
+        payload,
+    )?
+    .serialize()
 }

@@ -135,6 +135,7 @@ fn input_slice<'a>(input: *const u8, input_length: usize) -> Result<&'a [u8], Na
 mod tests {
     use std::ffi::CStr;
     use std::ptr;
+    use std::slice;
 
     use super::*;
 
@@ -159,11 +160,16 @@ mod tests {
     }
 
     #[test]
-    fn compression_returns_not_implemented() {
+    fn compression_returns_archive_buffer() {
         let input = [1_u8, 2, 3];
         let result = hz_native_compress(input.as_ptr(), input.len());
-        assert_eq!(result.status, HzNativeStatus::NotImplemented);
-        assert!(!result.error_message.is_null());
+        assert_eq!(result.status, HzNativeStatus::Ok);
+        assert!(result.error_message.is_null());
+        assert!(!result.buffer.data.is_null());
+        assert!(result.buffer.length > 26);
+
+        let bytes = unsafe { slice::from_raw_parts(result.buffer.data, result.buffer.length) };
+        assert_eq!(&bytes[0..4], b"HZF1");
         hz_native_result_free(result);
     }
 
@@ -179,7 +185,8 @@ mod tests {
     #[test]
     fn empty_input_is_safe() {
         let result = hz_native_compress(ptr::null(), 0);
-        assert_eq!(result.status, HzNativeStatus::NotImplemented);
+        assert_eq!(result.status, HzNativeStatus::Ok);
+        assert_eq!(result.buffer.length, 26);
         hz_native_result_free(result);
     }
 
