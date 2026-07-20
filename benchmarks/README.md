@@ -24,6 +24,14 @@ Native Rust engine run:
 benchmarks/run.sh --engine rust --max-depth 0
 ```
 
+Native Rust file-streaming run:
+
+```bash
+benchmarks/run.sh --engine rust-stream --max-depth 0
+```
+
+Rust mode uses the in-memory wrapper for parity with Swift benchmark output. `rust-stream` uses the native path-based file API for compression and decompression, and is intentionally limited to single-layer compression.
+
 Adaptive recursive compression:
 
 ```bash
@@ -82,4 +90,4 @@ Important CSV fields include:
 - `decompression_seconds`
 - `verified`
 
-Rust mode builds `native/hz-native` before compiling the runner and verifies that decompression restores the original workload bytes.
+Rust modes build `native/hz-native` before compiling the runner and verify that decompression restores the original workload bytes.

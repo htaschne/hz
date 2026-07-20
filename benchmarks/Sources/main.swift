@@ -11,6 +11,7 @@ struct BenchmarkOptions {
 enum BenchmarkEngineKind: String {
     case swift
     case rust
+    case rustStream = "rust-stream"
 }
 
 struct Workload {
@@ -24,6 +25,7 @@ enum BenchmarkError: Error, CustomStringConvertible {
     case noWorkloads
     case verificationFailed(String)
     case rustEngineUnavailable
+    case streamingRustRequiresSinglePass
 
     var description: String {
         switch self {
@@ -37,6 +39,8 @@ enum BenchmarkError: Error, CustomStringConvertible {
             return "Verification failed for \(workload)"
         case .rustEngineUnavailable:
             return "Rust benchmark engine was selected, but the runner was not built with HZ_NATIVE_BRIDGE"
+        case .streamingRustRequiresSinglePass:
+            return "rust-stream benchmarks require --max-depth 0 because the native file API is single-layer"
         }
     }
 }
@@ -71,7 +75,7 @@ do {
         "workload,mode,configured_max_depth,original_bytes,final_archive_bytes,best_pass,best_archive_bytes,accepted_layer_count,stopping_reason,compression_seconds,decompression_seconds,verified,platform"
     ]
 
-    let engine = try makeEngine(options.engineKind)
+    let engine = options.engineKind == .rustStream ? nil : try makeEngine(options.engineKind)
 
     for workload in workloads {
         let original = try Data(contentsOf: workload.url)
@@ -80,24 +84,18 @@ do {
             stopWhenNotSmaller: options.maxAdditionalDepth == nil
         )
 
-        let compressionStart = Date()
-        let result = try engine.compress(original, options: compressionOptions)
-        let compressionSeconds = Date().timeIntervalSince(compressionStart)
-
-        let decompressionStart = Date()
-        let decompressed = try engine.decompress(result.archive, options: .full)
-        let decompressionSeconds = Date().timeIntervalSince(decompressionStart)
-        let verified = decompressed == original
-
-        guard verified else {
-            throw BenchmarkError.verificationFailed(workload.name)
-        }
-
         let archiveURL = rawURL.appendingPathComponent("\(workload.name)-\(mode).hz")
-        try result.archive.write(to: archiveURL)
+        let run = try benchmark(
+            workload: workload,
+            original: original,
+            archiveURL: archiveURL,
+            engine: engine,
+            engineKind: options.engineKind,
+            compressionOptions: compressionOptions
+        )
 
-        let bestPass = result.bestPass
-        for pass in result.passes {
+        let bestPass = run.result.bestPass
+        for pass in run.result.passes {
             passRows.append(
                 [
                     csv(workload.name),
@@ -109,11 +107,11 @@ do {
                     format(pass.ratio),
                     String(pass.accepted),
                     String(bestPass?.layer ?? 0),
-                    String(result.acceptedLayerCount),
-                    result.stoppingReason.rawValue,
-                    format(compressionSeconds),
-                    format(decompressionSeconds),
-                    String(verified)
+                    String(run.result.acceptedLayerCount),
+                    run.result.stoppingReason.rawValue,
+                    format(run.compressionSeconds),
+                    format(run.decompressionSeconds),
+                    String(run.verified)
                 ].joined(separator: ",")
             )
         }
@@ -124,14 +122,14 @@ do {
                 mode,
                 configuredDepth,
                 String(original.count),
-                String(result.archive.count),
+                String(run.result.archive.count),
                 String(bestPass?.layer ?? 0),
-                String(bestPass?.outputByteCount ?? result.archive.count),
-                String(result.acceptedLayerCount),
-                result.stoppingReason.rawValue,
-                format(compressionSeconds),
-                format(decompressionSeconds),
-                String(verified),
+                String(bestPass?.outputByteCount ?? run.result.archive.count),
+                String(run.result.acceptedLayerCount),
+                run.result.stoppingReason.rawValue,
+                format(run.compressionSeconds),
+                format(run.decompressionSeconds),
+                String(run.verified),
                 csv(platformDescription())
             ].joined(separator: ",")
         )
@@ -148,6 +146,125 @@ do {
 } catch {
     fputs("benchmark error: \(error)\n", stderr)
     exit(1)
+}
+
+struct BenchmarkRun {
+    let result: CompressionResult
+    let compressionSeconds: TimeInterval
+    let decompressionSeconds: TimeInterval
+    let verified: Bool
+}
+
+func benchmark(
+    workload: Workload,
+    original: Data,
+    archiveURL: URL,
+    engine: (any CompressionEngine)?,
+    engineKind: BenchmarkEngineKind,
+    compressionOptions: CompressionOptions
+) throws -> BenchmarkRun {
+    switch engineKind {
+    case .swift, .rust:
+        guard let engine else {
+            throw BenchmarkError.invalidArgument(engineKind.rawValue)
+        }
+
+        let compressionStart = Date()
+        let result = try engine.compress(original, options: compressionOptions)
+        let compressionSeconds = Date().timeIntervalSince(compressionStart)
+
+        let decompressionStart = Date()
+        let decompressed = try engine.decompress(result.archive, options: .full)
+        let decompressionSeconds = Date().timeIntervalSince(decompressionStart)
+        let verified = decompressed == original
+
+        guard verified else {
+            throw BenchmarkError.verificationFailed(workload.name)
+        }
+
+        try result.archive.write(to: archiveURL)
+
+        return BenchmarkRun(
+            result: result,
+            compressionSeconds: compressionSeconds,
+            decompressionSeconds: decompressionSeconds,
+            verified: verified
+        )
+
+    case .rustStream:
+        return try benchmarkStreamingRust(
+            workload: workload,
+            original: original,
+            archiveURL: archiveURL,
+            compressionOptions: compressionOptions
+        )
+    }
+}
+
+func benchmarkStreamingRust(
+    workload: Workload,
+    original: Data,
+    archiveURL: URL,
+    compressionOptions: CompressionOptions
+) throws -> BenchmarkRun {
+    guard compressionOptions.maxAdditionalDepth == 0 else {
+        throw BenchmarkError.streamingRustRequiresSinglePass
+    }
+
+    #if HZ_NATIVE_BRIDGE
+    let info = RustHuffmanEngine.info
+    guard info.isBridgeAvailable, info.supportsCompression else {
+        throw BenchmarkError.rustEngineUnavailable
+    }
+
+    let engine = RustHuffmanEngine()
+    let outputURL = archiveURL
+        .deletingLastPathComponent()
+        .appendingPathComponent("\(workload.name)-streaming-output")
+
+    try? FileManager.default.removeItem(at: archiveURL)
+    try? FileManager.default.removeItem(at: outputURL)
+
+    let compressionStart = Date()
+    try engine.compressFile(at: workload.url, to: archiveURL)
+    let compressionSeconds = Date().timeIntervalSince(compressionStart)
+
+    let archive = try Data(contentsOf: archiveURL)
+
+    let decompressionStart = Date()
+    try engine.decompressFile(at: archiveURL, to: outputURL)
+    let decompressionSeconds = Date().timeIntervalSince(decompressionStart)
+
+    let decompressed = try Data(contentsOf: outputURL)
+    try? FileManager.default.removeItem(at: outputURL)
+
+    let verified = decompressed == original
+    guard verified else {
+        throw BenchmarkError.verificationFailed(workload.name)
+    }
+
+    let pass = CompressionPass(
+        layer: 1,
+        inputByteCount: original.count,
+        outputByteCount: archive.count,
+        ratio: original.isEmpty ? 0 : Double(archive.count) / Double(original.count),
+        accepted: true
+    )
+
+    return BenchmarkRun(
+        result: CompressionResult(
+            archive: archive,
+            acceptedLayerCount: 1,
+            stoppingReason: .reachedMaxDepth,
+            passes: [pass]
+        ),
+        compressionSeconds: compressionSeconds,
+        decompressionSeconds: decompressionSeconds,
+        verified: verified
+    )
+    #else
+    throw BenchmarkError.rustEngineUnavailable
+    #endif
 }
 
 func parseArguments(_ arguments: [String]) throws -> BenchmarkOptions {
@@ -205,6 +322,8 @@ func makeEngine(_ kind: BenchmarkEngineKind) throws -> any CompressionEngine {
         #else
         throw BenchmarkError.rustEngineUnavailable
         #endif
+    case .rustStream:
+        throw BenchmarkError.invalidArgument(kind.rawValue)
     }
 }
 
@@ -325,12 +444,13 @@ func printUsage() {
           benchmarks/run.sh [--adaptive]
           benchmarks/run.sh --engine swift [--adaptive]
           benchmarks/run.sh --engine rust
+          benchmarks/run.sh --engine rust-stream --max-depth 0
           benchmarks/run.sh --max-depth 0
           benchmarks/run.sh --max-depth N
           benchmarks/run.sh --input path/to/file [--max-depth N]
 
         Options:
-          --engine NAME      Engine to use: swift or rust. Defaults to swift.
+          --engine NAME      Engine to use: swift, rust, or rust-stream. Defaults to swift.
           --input PATH       Benchmark one file.
           --workloads PATH   Benchmark all files in a workload directory.
           --output PATH      Results directory. Defaults to benchmarks/results.

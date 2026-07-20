@@ -37,7 +37,7 @@ case "$ENGINE" in
       "$SCRIPT_DIR/Sources/main.swift" \
       -o "$RUNNER"
     ;;
-  rust)
+  rust | rust-stream)
     "$REPO_ROOT/scripts/native/build.sh" Release
     swiftc -O \
       -D HZ_NATIVE_BRIDGE \
@@ -51,7 +51,7 @@ case "$ENGINE" in
       -o "$RUNNER"
     ;;
   *)
-    echo "error: unsupported benchmark engine '$ENGINE' (expected swift or rust)" >&2
+    echo "error: unsupported benchmark engine '$ENGINE' (expected swift, rust, or rust-stream)" >&2
     exit 1
     ;;
 esac
