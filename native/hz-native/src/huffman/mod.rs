@@ -1,3 +1,4 @@
+mod bit_writer;
 mod codes;
 mod compress;
 mod decompress;

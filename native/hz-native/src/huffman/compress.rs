@@ -1,5 +1,6 @@
 use crate::error::NativeError;
 
+use super::bit_writer::encode_payload;
 use super::codes::{code_lengths, make_canonical_code_table, make_tree_code_table};
 use super::frequency::byte_frequencies;
 use super::frequency::total_frequency;
@@ -27,10 +28,16 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>, NativeError> {
             code_table.iter().filter(|code| code.is_some()).count(),
             canonical_table.iter().filter(|code| code.is_some()).count()
         );
+
+        let encoded = encode_payload(input, &code_table)?;
+        debug_assert_eq!(
+            encoded.bytes.len() as u64,
+            encoded.bit_count / 8 + u64::from(encoded.bit_count % 8 != 0)
+        );
     }
 
-    // TODO(native-huffman): implement bit writer, archive serialization, and
-    // recursive compression boundaries.
+    // TODO(native-huffman): implement archive serialization and recursive
+    // compression boundaries.
     Err(NativeError::NotImplemented(
         "Rust Huffman compression is not implemented yet",
     ))

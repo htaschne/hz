@@ -56,6 +56,8 @@ pub fn static_c_message(message: &'static str) -> *const c_char {
         "canonical Huffman code space overflowed" => {
             c"canonical Huffman code space overflowed".as_ptr()
         }
+        "encoded bit count overflowed" => c"encoded bit count overflowed".as_ptr(),
+        "missing Huffman code for input byte" => c"missing Huffman code for input byte".as_ptr(),
         _ => c"unknown Rust native engine error".as_ptr(),
     }
 }
