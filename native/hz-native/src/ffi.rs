@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
@@ -52,13 +53,17 @@ impl HzNativeResult {
     }
 
     fn error(error: NativeError) -> Self {
+        let error_message = CString::new(error.message_text())
+            .unwrap_or_else(|_| CString::new("Rust native engine returned invalid error text").unwrap())
+            .into_raw();
+
         Self {
             status: error.status(),
             buffer: HzNativeBuffer {
                 data: ptr::null_mut(),
                 length: 0,
             },
-            error_message: error.message(),
+            error_message,
         }
     }
 }
@@ -110,13 +115,17 @@ pub extern "C" fn hz_native_decompress_file(
 
 #[no_mangle]
 pub extern "C" fn hz_native_result_free(result: HzNativeResult) {
-    if result.buffer.data.is_null() || result.buffer.length == 0 {
-        return;
+    if !result.error_message.is_null() {
+        unsafe {
+            drop(CString::from_raw(result.error_message.cast_mut()));
+        }
     }
 
-    let slice_pointer = ptr::slice_from_raw_parts_mut(result.buffer.data, result.buffer.length);
-    unsafe {
-        drop(Box::from_raw(slice_pointer));
+    if !result.buffer.data.is_null() && result.buffer.length > 0 {
+        let slice_pointer = ptr::slice_from_raw_parts_mut(result.buffer.data, result.buffer.length);
+        unsafe {
+            drop(Box::from_raw(slice_pointer));
+        }
     }
 }
 
@@ -297,6 +306,33 @@ mod tests {
 
         assert_eq!(result.status, HzNativeStatus::InvalidArgument);
         hz_native_result_free(result);
+    }
+
+    #[test]
+    fn file_compression_reports_temporary_creation_context() {
+        let directory = unique_temp_directory();
+        fs::create_dir_all(&directory).expect("temp dir");
+        let source = directory.join("input.bin");
+        let archive = directory.join("missing-parent").join("input.hz");
+        fs::write(&source, b"diagnostic source").expect("write source");
+
+        let source_c = CString::new(source.to_string_lossy().as_bytes()).expect("source c string");
+        let archive_c =
+            CString::new(archive.to_string_lossy().as_bytes()).expect("archive c string");
+
+        let result = hz_native_compress_file(source_c.as_ptr(), archive_c.as_ptr());
+        assert_eq!(result.status, HzNativeStatus::InternalError);
+        assert!(!result.error_message.is_null());
+
+        let message = unsafe { CStr::from_ptr(result.error_message) }
+            .to_str()
+            .expect("error message utf8");
+        assert!(message.contains("failed to create temporary destination file"));
+        assert!(message.contains("kind="));
+        assert!(message.contains("os_error="));
+
+        hz_native_result_free(result);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]

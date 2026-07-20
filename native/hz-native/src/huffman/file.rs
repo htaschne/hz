@@ -1,5 +1,6 @@
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::BufReader;
 use std::io::BufWriter;
 use std::path::Path;
@@ -23,18 +24,18 @@ pub fn compress_file(
     validate_distinct_paths(source, destination)?;
 
     let input =
-        File::open(source).map_err(|_| NativeError::Internal("failed to open source file"))?;
+        File::open(source).map_err(|error| io_error("open source file", source, error))?;
     let mut input = BufReader::new(input);
     let temporary = temporary_destination(destination)?;
     let result = (|| {
         let output = File::create(&temporary)
-            .map_err(|_| NativeError::Internal("failed to create temporary destination file"))?;
+            .map_err(|error| io_error("create temporary destination file", &temporary, error))?;
         let mut output = BufWriter::new(output);
         let stats = compress_stream(&mut input, &mut output)?;
         use std::io::Write;
         output
             .flush()
-            .map_err(|_| NativeError::Internal("failed to flush destination file"))?;
+            .map_err(|error| io_error("flush temporary destination file", &temporary, error))?;
         Ok(stats)
     })();
 
@@ -50,18 +51,18 @@ pub fn decompress_file(
     validate_distinct_paths(source, destination)?;
 
     let input =
-        File::open(source).map_err(|_| NativeError::Internal("failed to open source file"))?;
+        File::open(source).map_err(|error| io_error("open source file", source, error))?;
     let mut input = BufReader::new(input);
     let temporary = temporary_destination(destination)?;
     let result = (|| {
         let output = File::create(&temporary)
-            .map_err(|_| NativeError::Internal("failed to create temporary destination file"))?;
+            .map_err(|error| io_error("create temporary destination file", &temporary, error))?;
         let mut output = BufWriter::new(output);
         let stats = decompress_stream(&mut input, &mut output)?;
         use std::io::Write;
         output
             .flush()
-            .map_err(|_| NativeError::Internal("failed to flush destination file"))?;
+            .map_err(|error| io_error("flush temporary destination file", &temporary, error))?;
         Ok(stats)
     })();
 
@@ -101,7 +102,7 @@ fn finish_temporary_destination<T>(
     match result {
         Ok(stats) => {
             fs::rename(temporary, destination)
-                .map_err(|_| NativeError::Internal("failed to move temporary destination file"))?;
+                .map_err(|error| io_error("move temporary destination file", temporary, error))?;
             Ok(stats)
         }
         Err(error) => {
@@ -109,4 +110,14 @@ fn finish_temporary_destination<T>(
             Err(error)
         }
     }
+}
+
+fn io_error(operation: &'static str, path: &Path, error: io::Error) -> NativeError {
+    NativeError::InternalMessage(format!(
+        "failed to {operation}: path=\"{}\", kind={:?}, os_error={:?}, error=\"{}\"",
+        path.display(),
+        error.kind(),
+        error.raw_os_error(),
+        error
+    ))
 }

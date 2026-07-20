@@ -61,8 +61,8 @@ HzNativeResult hz_native_decompress_file(
 // - Rust never retains input pointers after a call returns;
 // - non-null result.buffer.data is owned by Rust and must be released exactly
 //   once by passing the whole result to hz_native_result_free;
-// - error_message currently points to static storage and is not freed directly
-//   by callers.
+// - non-null error_message is owned by Rust and must be released exactly
+//   once by passing the whole result to hz_native_result_free.
 void hz_native_result_free(HzNativeResult result);
 
 #ifdef __cplusplus
