@@ -29,24 +29,70 @@ struct NativeEngineTests {
         #expect(info.isBridgeAvailable)
         #expect(info.abiVersion > 0)
         #expect(!info.version.isEmpty)
-        #expect(!info.supportsCompression)
+        #expect(info.supportsCompression)
     }
 
-    @Test func rustCompressionMapsNotImplemented() {
-        expectNotImplemented("compression") {
-            _ = try RustHuffmanEngine().compress(Data("hello".utf8), options: .singlePass)
+    @Test func rustEngineRoundTripsNormalText() throws {
+        try expectRustRoundTrip(Data("the quick brown fox jumps over the lazy dog".utf8))
+    }
+
+    @Test func rustEngineRoundTripsEmptyInput() throws {
+        try expectRustRoundTrip(Data())
+    }
+
+    @Test func rustEngineRoundTripsSingleRepeatedByte() throws {
+        try expectRustRoundTrip(Data(repeating: 0x41, count: 1_024))
+    }
+
+    @Test func rustEngineRoundTripsBinaryZeroBytes() throws {
+        try expectRustRoundTrip(Data([0, 1, 0, 2, 0, 3, 255, 0]))
+    }
+
+    @Test func swiftArchiveDecompressesWithRustEngine() throws {
+        let input = Data("Swift archive decoded by Rust".utf8)
+        let archive = try SwiftHuffmanEngine().compress(input, options: .singlePass).archive
+
+        #expect(try RustHuffmanEngine().decompress(archive, options: .full) == input)
+    }
+
+    @Test func rustArchiveDecompressesWithSwiftEngine() throws {
+        let input = Data("Rust archive decoded by Swift".utf8)
+        let archive = try RustHuffmanEngine().compress(input, options: .singlePass).archive
+
+        #expect(try SwiftHuffmanEngine().decompress(archive, options: .full) == input)
+    }
+
+    @Test func rustPaddingBitsNeverCreateAdditionalOutput() throws {
+        let input = try makeNonByteAlignedInput()
+        let compressed = try RustHuffmanEngine().compress(input, options: .singlePass).archive
+        let archive = try HzArchive.parse(compressed)
+        let paddingBitCount = UInt8(8 - (archive.encodedBitCount % 8))
+
+        #expect(paddingBitCount > 0 && paddingBitCount < 8)
+
+        var mutated = compressed
+        let lastIndex = mutated.index(before: mutated.endIndex)
+        mutated[lastIndex] |= UInt8((1 << paddingBitCount) - 1)
+
+        #expect(try RustHuffmanEngine().decompress(mutated, options: .full) == input)
+    }
+
+    @Test func rustInvalidMagicThrows() {
+        let archive = Data("NOPE".utf8) + Data(repeating: 0, count: 32)
+
+        expectThrows {
+            _ = try RustHuffmanEngine().decompress(archive, options: .full)
         }
     }
 
-    @Test func rustDecompressionMapsNotImplemented() {
-        expectNotImplemented("decompression") {
-            _ = try RustHuffmanEngine().decompress(Data("archive".utf8), options: .full)
-        }
-    }
+    @Test func rustTruncatedArchiveThrows() throws {
+        var archive = try RustHuffmanEngine()
+            .compress(Data("truncated archive".utf8), options: .singlePass)
+            .archive
+        archive.removeLast()
 
-    @Test func emptyDataCrossesNativeBoundarySafely() {
-        expectNotImplemented("compression") {
-            _ = try RustHuffmanEngine().compress(Data(), options: .singlePass)
+        expectThrows {
+            _ = try RustHuffmanEngine().decompress(archive, options: .full)
         }
     }
 
@@ -56,17 +102,44 @@ struct NativeEngineTests {
         #expect(FileCompressionService().engine is SwiftHuffmanEngine)
     }
 
-    private func expectNotImplemented(
-        _ expectedText: String,
-        operation: () throws -> Void
-    ) {
+    private func expectRustRoundTrip(_ input: Data) throws {
+        let engine = RustHuffmanEngine()
+        let archive = try engine.compress(input, options: .adaptive).archive
+        let output = try engine.decompress(archive, options: .full)
+
+        #expect(output == input)
+    }
+
+    private func makeNonByteAlignedInput() throws -> Data {
+        let candidates: [Data] = [
+            Data("abc".utf8),
+            Data("hello world".utf8),
+            Data([0, 1, 2, 3, 4]),
+            Data("padding bits should not decode".utf8)
+        ]
+
+        for candidate in candidates {
+            let archive = try HzArchive.parse(
+                RustHuffmanEngine().compress(candidate, options: .singlePass).archive
+            )
+            if archive.encodedBitCount % 8 != 0 {
+                return candidate
+            }
+        }
+
+        throw TestInputError.noNonByteAlignedCandidate
+    }
+
+    private func expectThrows(_ operation: () throws -> Void) {
         do {
             try operation()
-            Issue.record("Expected Rust native engine to report not implemented")
-        } catch NativeEngineError.notImplemented(let message) {
-            #expect(message.localizedCaseInsensitiveContains(expectedText))
+            Issue.record("Expected operation to throw")
         } catch {
-            Issue.record("Unexpected error: \(error)")
+            return
         }
     }
+}
+
+private enum TestInputError: Error {
+    case noNonByteAlignedCandidate
 }
