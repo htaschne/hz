@@ -174,12 +174,21 @@ mod tests {
     }
 
     #[test]
-    fn decompression_returns_not_implemented() {
+    fn decompression_returns_original_input() {
         let input = [1_u8, 2, 3];
-        let result = hz_native_decompress(input.as_ptr(), input.len());
-        assert_eq!(result.status, HzNativeStatus::NotImplemented);
-        assert!(!result.error_message.is_null());
+        let archive = hz_native_compress(input.as_ptr(), input.len());
+        assert_eq!(archive.status, HzNativeStatus::Ok);
+
+        let result = hz_native_decompress(archive.buffer.data, archive.buffer.length);
+        assert_eq!(result.status, HzNativeStatus::Ok);
+        assert!(result.error_message.is_null());
+        assert_eq!(result.buffer.length, input.len());
+
+        let bytes = unsafe { slice::from_raw_parts(result.buffer.data, result.buffer.length) };
+        assert_eq!(bytes, input);
+
         hz_native_result_free(result);
+        hz_native_result_free(archive);
     }
 
     #[test]

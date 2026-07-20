@@ -105,11 +105,172 @@ impl HzArchive {
         output.extend_from_slice(&self.payload);
         Ok(output)
     }
+
+    pub fn parse(data: &[u8]) -> Result<Self, NativeError> {
+        let mut reader = ArchiveReader::new(data);
+
+        let magic = reader.read_bytes(Self::MAGIC.len())?;
+        if magic != Self::MAGIC {
+            return Err(NativeError::InvalidArgument(
+                "unsupported legacy or invalid Hz archive",
+            ));
+        }
+
+        let version = reader.read_u8()?;
+        if version != Self::VERSION {
+            return Err(NativeError::InvalidArgument(
+                "unsupported Hz archive version",
+            ));
+        }
+
+        let flags = reader.read_u8()?;
+        let recursive_layer_count = reader.read_u16()?;
+        let original_byte_count = reader.read_u64()?;
+        let encoded_bit_count = reader.read_u64()?;
+        let entry_count = reader.read_u16()?;
+
+        if flags != Self::FLAGS {
+            return Err(NativeError::InvalidArgument("unsupported Hz archive flags"));
+        }
+
+        if recursive_layer_count == 0 && original_byte_count == 0 && encoded_bit_count != 0 {
+            return Err(NativeError::InvalidArgument(
+                "invalid recursive layer count in Hz archive",
+            ));
+        }
+
+        let mut frequencies = [0; 256];
+        for _ in 0..entry_count {
+            let byte = reader.read_u8()?;
+            let frequency = reader.read_u64()?;
+            if frequency == 0 {
+                return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
+            }
+
+            let slot = &mut frequencies[usize::from(byte)];
+            if *slot != 0 {
+                return Err(NativeError::InvalidArgument(
+                    "duplicate Hz frequency table entry",
+                ));
+            }
+
+            *slot = frequency;
+        }
+
+        let frequency_total = checked_total_frequency(&frequencies)?;
+        if frequency_total != original_byte_count {
+            return Err(NativeError::InvalidArgument(
+                "Hz frequency total does not match original byte count",
+            ));
+        }
+
+        if original_byte_count == 0 {
+            if frequencies.iter().any(|&frequency| frequency > 0) || encoded_bit_count != 0 {
+                return Err(NativeError::InvalidArgument("invalid Hz frequency table"));
+            }
+        } else if frequencies.iter().all(|&frequency| frequency == 0) || encoded_bit_count == 0 {
+            return Err(NativeError::InvalidArgument(
+                "invalid encoded bit count in Hz archive",
+            ));
+        }
+
+        let expected_payload_len = expected_payload_length(encoded_bit_count)?;
+        let payload = reader.read_remaining();
+        if payload.len() != expected_payload_len {
+            return Err(NativeError::InvalidArgument(
+                "Hz payload length does not match encoded bit count",
+            ));
+        }
+
+        Ok(Self {
+            recursive_layer_count,
+            original_byte_count,
+            encoded_bit_count,
+            frequencies,
+            payload: payload.to_vec(),
+        })
+    }
+
+    pub fn original_byte_count(&self) -> u64 {
+        self.original_byte_count
+    }
+
+    pub fn encoded_bit_count(&self) -> u64 {
+        self.encoded_bit_count
+    }
+
+    pub fn frequencies(&self) -> &FrequencyTable {
+        &self.frequencies
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
 }
 
 fn expected_payload_length(encoded_bit_count: u64) -> Result<usize, NativeError> {
     let length = encoded_bit_count / 8 + u64::from(!encoded_bit_count.is_multiple_of(8));
     usize::try_from(length).map_err(|_| NativeError::Internal("encoded payload is too large"))
+}
+
+fn checked_total_frequency(frequencies: &FrequencyTable) -> Result<u64, NativeError> {
+    frequencies.iter().try_fold(0_u64, |total, &frequency| {
+        total
+            .checked_add(frequency)
+            .ok_or(NativeError::InvalidArgument(
+                "Hz frequency total overflowed",
+            ))
+    })
+}
+
+struct ArchiveReader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ArchiveReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    fn read_u8(&mut self) -> Result<u8, NativeError> {
+        let byte = self
+            .data
+            .get(self.offset)
+            .copied()
+            .ok_or(NativeError::InvalidArgument("truncated Hz archive header"))?;
+        self.offset += 1;
+        Ok(byte)
+    }
+
+    fn read_u16(&mut self) -> Result<u16, NativeError> {
+        let bytes = self.read_bytes(2)?;
+        Ok(u16::from_le_bytes(bytes.try_into().expect("two bytes")))
+    }
+
+    fn read_u64(&mut self) -> Result<u64, NativeError> {
+        let bytes = self.read_bytes(8)?;
+        Ok(u64::from_le_bytes(bytes.try_into().expect("eight bytes")))
+    }
+
+    fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], NativeError> {
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or(NativeError::InvalidArgument("truncated Hz archive header"))?;
+        let bytes = self
+            .data
+            .get(self.offset..end)
+            .ok_or(NativeError::InvalidArgument("truncated Hz archive header"))?;
+        self.offset = end;
+        Ok(bytes)
+    }
+
+    fn read_remaining(&mut self) -> &'a [u8] {
+        let remaining = &self.data[self.offset..];
+        self.offset = self.data.len();
+        remaining
+    }
 }
 
 #[cfg(test)]
@@ -181,6 +342,50 @@ mod tests {
         assert_eq!(
             error,
             NativeError::Internal("encoded payload length does not match bit count")
+        );
+    }
+
+    #[test]
+    fn parses_serialized_archive() {
+        let bytes = archive_for(b"banana").serialize().expect("serialize");
+        let archive = HzArchive::parse(&bytes).expect("parse");
+
+        assert_eq!(archive.original_byte_count(), 6);
+        assert_eq!(archive.frequencies()[usize::from(b'a')], 3);
+        assert_eq!(archive.frequencies()[usize::from(b'b')], 1);
+        assert_eq!(archive.frequencies()[usize::from(b'n')], 2);
+        assert_eq!(archive.payload().len(), 2);
+    }
+
+    #[test]
+    fn rejects_invalid_magic() {
+        let mut bytes = archive_for(b"abc").serialize().expect("serialize");
+        bytes[0] = b'X';
+
+        assert_eq!(
+            HzArchive::parse(&bytes).expect_err("invalid magic"),
+            NativeError::InvalidArgument("unsupported legacy or invalid Hz archive")
+        );
+    }
+
+    #[test]
+    fn rejects_truncated_header() {
+        let bytes = vec![b'H', b'Z', b'F'];
+
+        assert_eq!(
+            HzArchive::parse(&bytes).expect_err("truncated"),
+            NativeError::InvalidArgument("truncated Hz archive header")
+        );
+    }
+
+    #[test]
+    fn rejects_payload_length_mismatch() {
+        let mut bytes = archive_for(b"abc").serialize().expect("serialize");
+        bytes.pop();
+
+        assert_eq!(
+            HzArchive::parse(&bytes).expect_err("payload mismatch"),
+            NativeError::InvalidArgument("Hz payload length does not match encoded bit count")
         );
     }
 }
