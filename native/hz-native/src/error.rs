@@ -46,6 +46,16 @@ pub fn static_c_message(message: &'static str) -> *const c_char {
             c"Rust native engine panicked across FFI boundary".as_ptr()
         }
         "Rust native engine allocation failed" => c"Rust native engine allocation failed".as_ptr(),
+        "Huffman code must contain at least one bit" => {
+            c"Huffman code must contain at least one bit".as_ptr()
+        }
+        "Huffman code length cannot be zero" => c"Huffman code length cannot be zero".as_ptr(),
+        "canonical code lengths are not sorted" => {
+            c"canonical code lengths are not sorted".as_ptr()
+        }
+        "canonical Huffman code space overflowed" => {
+            c"canonical Huffman code space overflowed".as_ptr()
+        }
         _ => c"unknown Rust native engine error".as_ptr(),
     }
 }
