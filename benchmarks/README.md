@@ -91,3 +91,13 @@ Important CSV fields include:
 - `verified`
 
 Rust modes build `native/hz-native` before compiling the runner and verify that decompression restores the original workload bytes.
+
+## Research Papers
+
+The recursive-compression manuscript uses committed benchmark snapshots under `papers/recursive-huffman/artifacts/data/`.
+
+The implementation benchmark manuscript has its own reproducibility entry point:
+
+```bash
+papers/implementation-benchmarks/artifacts/reproduce.sh --smoke
+```

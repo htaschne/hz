@@ -133,7 +133,15 @@ See [docs/ARCHIVE_FORMAT.md](docs/ARCHIVE_FORMAT.md) for the normative byte layo
 - [docs/NATIVE_ENGINE.md](docs/NATIVE_ENGINE.md): Rust backend, C ABI, ownership rules, Xcode integration, and compatibility notes.
 - [docs/NATIVE_STREAMING_DESIGN.md](docs/NATIVE_STREAMING_DESIGN.md): streaming design constraints and current boundaries.
 - [benchmarks/README.md](benchmarks/README.md): benchmark runner commands, workloads, outputs, and CSV fields.
-- [paper/README.md](paper/README.md): notes for building the recursive Huffman paper artifacts.
+
+## Research
+
+Research manuscripts and reproducibility artifacts live under [papers/](papers/):
+
+- [papers/recursive-huffman/](papers/recursive-huffman/): recursive/adaptive Huffman behavior.
+- [papers/implementation-benchmarks/](papers/implementation-benchmarks/): implementation trade-offs across Swift in-memory, Rust in-memory, and Rust streaming modes.
+
+See [papers/README.md](papers/README.md) for the research index and artifact policy.
 
 ## Repository Layout
 
@@ -146,7 +154,7 @@ See [docs/ARCHIVE_FORMAT.md](docs/ARCHIVE_FORMAT.md) for the normative byte layo
 ├── docs/                Archive, native backend, and streaming documentation
 ├── benchmarks/          Benchmark runner, generated workloads, result folders
 ├── scripts/native/      Native build, test, header, and clean scripts
-├── paper/               Recursive Huffman paper sources and generated artifacts
+├── papers/              Research manuscripts and reproducibility artifacts
 ├── Mocks/               Sample input data
 └── hz.xcodeproj         macOS Xcode project
 ```
