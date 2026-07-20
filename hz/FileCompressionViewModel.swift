@@ -48,16 +48,6 @@ final class FileCompressionViewModel: ObservableObject {
     }
 
     private func compress(_ url: URL) async throws {
-        let service = self.service
-        let archive = try await Task.detached(priority: .userInitiated) {
-            try service.compressFile(at: url) { status, progress in
-                Task { @MainActor [weak self] in
-                    self?.statusText = status
-                    self?.progress = progress
-                }
-            }
-        }.value
-
         statusText = "Choose a location to save the compressed file..."
         guard let saveURL = showSavePanel(
             suggestedName: "\(url.lastPathComponent).hz",
@@ -67,14 +57,9 @@ final class FileCompressionViewModel: ObservableObject {
             return
         }
 
-        try archive.write(to: saveURL)
-        statusText = "File saved successfully!"
-    }
-
-    private func decompress(_ url: URL) async throws {
         let service = self.service
-        let output = try await Task.detached(priority: .userInitiated) {
-            try service.decompressFile(at: url) { status, progress in
+        try await Task.detached(priority: .userInitiated) {
+            try service.compressFile(at: url, to: saveURL) { status, progress in
                 Task { @MainActor [weak self] in
                     self?.statusText = status
                     self?.progress = progress
@@ -82,6 +67,10 @@ final class FileCompressionViewModel: ObservableObject {
             }
         }.value
 
+        statusText = "File saved successfully!"
+    }
+
+    private func decompress(_ url: URL) async throws {
         statusText = "Choose a location to save the decompressed file..."
         guard let saveURL = showSavePanel(
             suggestedName: decompressedFileName(for: url),
@@ -91,7 +80,16 @@ final class FileCompressionViewModel: ObservableObject {
             return
         }
 
-        try output.write(to: saveURL)
+        let service = self.service
+        try await Task.detached(priority: .userInitiated) {
+            try service.decompressFile(at: url, to: saveURL) { status, progress in
+                Task { @MainActor [weak self] in
+                    self?.statusText = status
+                    self?.progress = progress
+                }
+            }
+        }.value
+
         statusText = "File saved successfully."
     }
 

@@ -96,6 +96,44 @@ struct NativeEngineTests {
         }
     }
 
+    @Test func rustFileStreamingRoundTrip() throws {
+        let directory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let sourceURL = directory.appendingPathComponent("input.bin")
+        let archiveURL = directory.appendingPathComponent("input.hz")
+        let outputURL = directory.appendingPathComponent("output.bin")
+        let input = Data(("streaming " + String(repeating: "banana ", count: 256)).utf8)
+        try input.write(to: sourceURL)
+
+        let engine = RustHuffmanEngine()
+        try engine.compressFile(at: sourceURL, to: archiveURL)
+        try engine.decompressFile(at: archiveURL, to: outputURL)
+
+        #expect(try Data(contentsOf: outputURL) == input)
+    }
+
+    @Test func fileCompressionServiceUsesRustStreamingPath() throws {
+        let directory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let sourceURL = directory.appendingPathComponent("input.txt")
+        let archiveURL = directory.appendingPathComponent("input.hz")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        let input = Data("service streaming path".utf8)
+        try input.write(to: sourceURL)
+
+        let service = FileCompressionService(engine: RustHuffmanEngine())
+        try service.compressFile(at: sourceURL, to: archiveURL) { _, _ in }
+        try service.decompressFile(at: archiveURL, to: outputURL) { _, _ in }
+
+        #expect(try Data(contentsOf: outputURL) == input)
+    }
+
     @Test func swiftEngineRemainsDefault() {
         #expect(CompressionEngineFactory.defaultKind == .swift)
         #expect(CompressionEngineFactory.make() is SwiftHuffmanEngine)
@@ -137,6 +175,13 @@ struct NativeEngineTests {
         } catch {
             return
         }
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hz-native-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }
 

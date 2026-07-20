@@ -68,6 +68,22 @@ struct RustHuffmanEngine: CompressionEngine {
         return currentBytes
     }
 
+    func compressFile(at sourceURL: URL, to destinationURL: URL) throws {
+        try callNativeFile(
+            sourceURL: sourceURL,
+            destinationURL: destinationURL,
+            operation: hz_native_compress_file
+        )
+    }
+
+    func decompressFile(at sourceURL: URL, to destinationURL: URL) throws {
+        try callNativeFile(
+            sourceURL: sourceURL,
+            destinationURL: destinationURL,
+            operation: hz_native_decompress_file
+        )
+    }
+
     private func makeLayerArchive(from input: Data, recursiveLayerCount: UInt16) throws -> Data {
         try HzArchive.parse(callNative(input, operation: hz_native_compress))
             .withRecursiveLayerCount(recursiveLayerCount)
@@ -118,6 +134,28 @@ struct RustHuffmanEngine: CompressionEngine {
         }
 
         return try data(from: result)
+    }
+
+    private func callNativeFile(
+        sourceURL: URL,
+        destinationURL: URL,
+        operation: (UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> HzNativeResult
+    ) throws {
+        guard hz_native_is_available() else {
+            throw NativeEngineError.unavailable
+        }
+
+        let result = sourceURL.path.withCString { sourcePath in
+            destinationURL.path.withCString { destinationPath in
+                operation(sourcePath, destinationPath)
+            }
+        }
+
+        defer {
+            hz_native_result_free(result)
+        }
+
+        _ = try data(from: result)
     }
 
     private func data(from result: HzNativeResult) throws -> Data {
